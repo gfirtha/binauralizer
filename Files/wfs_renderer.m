@@ -1,9 +1,5 @@
 classdef wfs_renderer < handle
-    %WFS_JOB Summary of this class goes here
-    %   Detailed explanation goes here
-    
-    % Input: (set of?) virtual_source_object,
-    % Output: n-channel signal object
+
     properties
         fs
         c

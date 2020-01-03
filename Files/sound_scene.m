@@ -3,45 +3,39 @@ classdef sound_scene < handle
     %   Should contain description for the objects, present in the sound
     %   scene and interfaces positions with the gui
     
-    properties
-        
+    properties    
         virtual_sources % Virtual source: WFS or HOA or stereo etc source (should be a class with input signal,)
         binaural_sources % sources to be binauralized by binaural method
         receiver
         environment
         scene_renderer
-        setup
-        gui
-        
     end
     
     methods
         function obj = sound_scene(gui, setup)
             obj.receiver = [0,0];
-            obj.gui = gui;
-            obj.setup = setup;
             obj.environment = environment;
             switch setup.Rendering
                 case 'Binaural'
                     pos = get_default_layout(setup.Input_stream.info.NumChannels, 2);
                     for n = 1 : setup.Input_stream.info.NumChannels
-                        obj.create_binaural_source(pos(n,:),-pos(n,:),zeros(setup.Block_size,1), obj.gui, setup.HRTF);
+                        obj.create_binaural_source(pos(n,:),-pos(n,:),zeros(setup.Block_size,1), gui, setup.HRTF);
                     end                    
                 otherwise
                     pos = get_default_layout(setup.Input_stream.info.NumChannels,  setup.renderer_setup.R + 0.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
-                        obj.create_virtual_source(pos(n,:),-pos(n,:),zeros(setup.Block_size,1), obj.gui);
+                        obj.create_virtual_source(pos(n,:),-pos(n,:),zeros(setup.Block_size,1), gui);
                     end
                     pos_ssd = get_default_layout(setup.renderer_setup.N,setup.renderer_setup.R);
                     for n = 1 : setup.renderer_setup.N
                         obj.create_binaural_source( pos_ssd(n,:),-pos_ssd(n,:),...
-                            zeros(setup.Block_size,1), obj.gui, setup.HRTF);
+                            zeros(setup.Block_size,1), gui, setup.HRTF);
                     end
-                    obj.gui.axes.XLim = (setup.renderer_setup.R+1)*[-1,1];
-                    obj.gui.axes.YLim = (setup.renderer_setup.R+1)*[-1,1];
+                    gui.axes.XLim = (setup.renderer_setup.R+1)*[-1,1];
+                    gui.axes.YLim = (setup.renderer_setup.R+1)*[-1,1];
             end
             
-            obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.binaural_sources,obj.receiver, obj. setup);
+            obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.binaural_sources,obj.receiver, setup);
             
         end
         
@@ -57,9 +51,9 @@ classdef sound_scene < handle
             end
         end
         
-        function obj = delete_virtual_source(obj, virt_source_idx)
+        function obj = delete_virtual_source(obj, virt_source_idx, gui)
             obj.virtual_sources{virt_source_idx} = {};
-            delete(obj.gui.virtual_source_points{virt_source_idx});
+            delete(gui.virtual_source_points{virt_source_idx});
         end
         
         function obj = create_binaural_source(obj, position, orientation, input, gui, hrtf)
@@ -78,19 +72,19 @@ classdef sound_scene < handle
             end
         end
         
-        function obj = delete_binaural_source(obj, bin_source_idx)
+        function obj = delete_binaural_source(obj, bin_source_idx, gui)
             obj.binaural_sources(bin_source_idx) = [];
-            delete(obj.gui.binaural_source_points{bin_source_idx});
+            delete(gui.binaural_source_points{bin_source_idx});
         end
         
-        function obj = delete(obj)
+        function obj = delete(obj,gui)
             N = length(obj.virtual_sources);
             for n = 1 : N
-                obj.delete_virtual_source(N-n+1);
+                obj.delete_virtual_source(N-n+1,gui);
             end
             N = length(obj.binaural_sources);
             for n = 1 : N
-                obj.delete_binaural_source(N-n+1);
+                obj.delete_binaural_source(N-n+1,gui);
             end
             clear obj
         end
