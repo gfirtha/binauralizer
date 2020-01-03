@@ -23,8 +23,8 @@ classdef listener_space_axes < handle
             grid on
             xlabel('x -> [m]')
             ylabel('y -> [m]')
-            xlim([-2,2]);
-            ylim([-2,2]);
+            xlim([-3,3]);
+            ylim([-3,3]);
         end
         
         function [rois,sourcePosition] = update_sources(obj,setup)

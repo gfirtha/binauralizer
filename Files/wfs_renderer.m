@@ -17,8 +17,8 @@ classdef wfs_renderer < handle
     end
     
     methods
-        function obj = wfs_renderer(virtual_source,SSD)
-            obj.fs = 48e3;
+        function obj = wfs_renderer(virtual_source,SSD, fs)
+            obj.fs = fs;
             obj.c = 343.1;
             obj.virtual_source = virtual_source;
             obj.secondary_source_distribution = SSD;
@@ -30,7 +30,7 @@ classdef wfs_renderer < handle
             
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
-            [ obj.amp, obj.delay ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0 );
+            [ obj.amp, obj.delay ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0, obj.fs, obj.c );
             
             N_blocks = length(obj.virtual_source.source_signal);
             N = ceil((50/obj.c*obj.fs)/N_blocks);
@@ -40,7 +40,7 @@ classdef wfs_renderer < handle
         function obj = update_driving_function(obj)
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
-            [ obj.amp, obj.delay ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0 );            
+            [ obj.amp, obj.delay ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0, obj.fs, obj.c );            
         end
         
         function h = get_wfs_prefilter(obj)

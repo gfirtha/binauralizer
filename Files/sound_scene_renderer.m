@@ -8,7 +8,7 @@ classdef sound_scene_renderer < handle
     end
     
     methods
-        function obj = sound_scene_renderer(virtual_sources,binaural_sources,receiver)
+        function obj = sound_scene_renderer(virtual_sources,binaural_sources,receiver, setup)
             if isempty(virtual_sources) % direct binauralization scenario
                 for n = 1 : length(binaural_sources)
                     obj.binaural_renderer{n} = binaural_renderer(binaural_sources{n}, receiver);
@@ -16,7 +16,7 @@ classdef sound_scene_renderer < handle
                 
             else % virtual sound field synthesis scenario
                 for n = 1 : length(virtual_sources)
-                    obj.wfs_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources);
+                    obj.wfs_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate);
                 end
             end
             for n = 1 : length(binaural_sources)
@@ -33,30 +33,27 @@ classdef sound_scene_renderer < handle
         
         function output = render(obj, input)
             %% Only binauralization job
-            if (isempty(obj.wfs_renderer))
+            if (isempty(obj.wfs_renderer))            
+               output = 0;
                for n = 1 : length(obj.binaural_renderer)
                    obj.binaural_renderer{n}.binaural_source.set_input(input(:,n));
+                   obj.binaural_renderer{n}.render;
+                   output = output + obj.binaural_renderer{n}.output_signal;
                end
-                cellfun( @(x) x.render , obj.binaural_renderer );
-                out_cell = cellfun( @(x) x.output_signal, obj.binaural_renderer, 'UniformOutput' , false);
-                output = sum( cat( 3, out_cell{:} ) , 3);
             %% Sound field synthesis job
             else
+                wfs_output = 0;
                 for m = 1 : length(obj.wfs_renderer)
                     obj.wfs_renderer{m}.virtual_source.set_input(input(:,m));
                     obj.wfs_renderer{m}.render;
+                    wfs_output = wfs_output + cell2mat(obj.wfs_renderer{m}.output_signal);
                 end
+                output = 0;
                 for n = 1 : length(obj.binaural_renderer)
-                    obj.binaural_renderer{n}.binaural_source.set_input(0);
-                    for m = 1 : length(obj.wfs_renderer)
-                        obj.binaural_renderer{n}.binaural_source.set_input(...
-                            obj.binaural_renderer{n}.binaural_source.source_signal +...
-                            obj.wfs_renderer{m}.output_signal{n});
-                    end
+                    obj.binaural_renderer{n}.binaural_source.set_input(wfs_output(:,n));
+                    obj.binaural_renderer{n}.render;
+                    output = output + obj.binaural_renderer{n}.output_signal;
                 end
-                cellfun( @(x) x.render , obj.binaural_renderer );
-                out_cell = cellfun( @(x) x.output_signal, obj.binaural_renderer, 'UniformOutput' , false);
-                output = sum( cat( 3, out_cell{:} ) , 3);
                 
             end
         end

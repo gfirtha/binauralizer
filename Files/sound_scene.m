@@ -8,50 +8,49 @@ classdef sound_scene < handle
         virtual_sources % Virtual source: WFS or HOA or stereo etc source (should be a class with input signal,)
         binaural_sources % sources to be binauralized by binaural method
         receiver
+        environment
         scene_renderer
-        convolution_setup
+        setup
         gui
         
     end
     
     methods
-        function obj = sound_scene(source_signal, gui, setup)
+        function obj = sound_scene(gui, setup)
             obj.receiver = [0,0];
             obj.gui = gui;
+            obj.setup = setup;
+            obj.environment = environment;
             switch setup.Rendering
                 case 'Binaural'
-                    for n = 1 : source_signal.info.NumChannels
-                        pos = randn(1,2);
-                        pos = pos/norm(pos);
-                        obj.create_binaural_source(pos,-pos,zeros(setup.Block_size,1), obj.gui, setup.HRTF);
+                    pos = get_default_layout(setup.Input_stream.info.NumChannels, 2);
+                    for n = 1 : setup.Input_stream.info.NumChannels
+                        obj.create_binaural_source(pos(n,:),-pos(n,:),zeros(setup.Block_size,1), obj.gui, setup.HRTF);
                     end                    
                 otherwise
-                    for n = 1 : source_signal.info.NumChannels
-                        pos = randn(1,2);
-                        pos = pos/norm(pos);
-                        obj.create_virtual_source(pos*(setup.WFS_Setup.R+0.25),-pos,zeros(setup.Block_size,1), obj.gui);
+                    pos = get_default_layout(setup.Input_stream.info.NumChannels,  setup.renderer_setup.R + 0.5);
+                    for n = 1 : setup.Input_stream.info.NumChannels
+                        obj.create_virtual_source(pos(n,:),-pos(n,:),zeros(setup.Block_size,1), obj.gui);
                     end
-                    N = setup.WFS_Setup.N;
-                    R0 = setup.WFS_Setup.R;
-                    fi = (0:2*pi/N:2*pi-2*pi/N);
-                    for n = 1 : N
-                        obj.create_binaural_source( R0*[cos(fi(n)),sin(fi(n))],-[cos(fi(n)),sin(fi(n))],...
+                    pos_ssd = get_default_layout(setup.renderer_setup.N,setup.renderer_setup.R);
+                    for n = 1 : setup.renderer_setup.N
+                        obj.create_binaural_source( pos_ssd(n,:),-pos_ssd(n,:),...
                             zeros(setup.Block_size,1), obj.gui, setup.HRTF);
                     end
-                    obj.gui.axes.XLim = (R0+1)*[-1,1];
-                    obj.gui.axes.YLim = (R0+1)*[-1,1];
+                    obj.gui.axes.XLim = (setup.renderer_setup.R+1)*[-1,1];
+                    obj.gui.axes.YLim = (setup.renderer_setup.R+1)*[-1,1];
             end
             
-            obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.binaural_sources,obj.receiver);
+            obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.binaural_sources,obj.receiver, obj. setup);
             
         end
         
         function obj = create_virtual_source(obj, position, orientation, input, gui)
-            idx = length(obj.virtual_sources);
-            obj.virtual_sources{idx + 1} = virtual_source(idx + 1, position, orientation, input);
-            gui.virtual_source_points{idx + 1} = drawpoint(gui.axes,...
-                'Position',position,'Color','red','Label',sprintf('%d',idx + 1),'LabelVisible','Off');
-            addlistener(gui.virtual_source_points{idx + 1} ,'MovingROI',@allevents);
+            idx = length(obj.virtual_sources) + 1;
+            obj.virtual_sources{idx} = virtual_source(idx, position, orientation, input);
+            gui.virtual_source_points{idx} = drawpoint(gui.axes,...
+                'Position',position,'Color','red','Label',sprintf('%d',idx),'LabelVisible','Off');
+            addlistener(gui.virtual_source_points{idx} ,'MovingROI',@allevents);
             function allevents(~,evt)
                 obj.virtual_sources{str2double(evt.Source.Label)}.position = evt.CurrentPosition;
                 obj.scene_renderer.update_wfs_renderers(str2double(evt.Source.Label));
@@ -64,12 +63,12 @@ classdef sound_scene < handle
         end
         
         function obj = create_binaural_source(obj, position, orientation, input, gui, hrtf)
-            idx = length(obj.binaural_sources);
-            obj.binaural_sources{idx + 1} = binaural_source(idx + 1, position, orientation, input, hrtf);
-            gui.binaural_source_points{idx + 1} = drawpoint(gui.axes,...
+            idx = length(obj.binaural_sources) + 1;
+            obj.binaural_sources{idx} = binaural_source(idx, position, orientation, input, hrtf);
+            gui.binaural_source_points{idx} = drawpoint(gui.axes,...
                 'Position',position,...
-                'Label',sprintf('%d',idx + 1),'LabelVisible','Off');
-            addlistener(gui.binaural_source_points{idx + 1} ,'MovingROI',@allevents);
+                'Label',sprintf('%d',idx),'LabelVisible','Off');
+            addlistener(gui.binaural_source_points{idx} ,'MovingROI',@allevents);
             function allevents(~,evt)
                 obj.binaural_sources{str2double(evt.Source.Label)}.position = evt.CurrentPosition;
                 for n = 1 : length(obj.scene_renderer.wfs_renderer)
