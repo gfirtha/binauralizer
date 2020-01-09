@@ -45,6 +45,7 @@ classdef wfs_renderer < handle
             H = sqrt(1i*w/obj.c);
             H(end/2+1) = real(H(end/2+1));
             h = fftshift(ifft(H)).*tukeywin(N,0.1);
+%            h  =1;
         end
         
         function render(obj)

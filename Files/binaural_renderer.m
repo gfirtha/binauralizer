@@ -9,6 +9,7 @@ classdef binaural_renderer < handle
         receiver
         hrtf_coefficients
         output_signal
+        output_ix
     end
     properties (SetAccess = protected)
         binaural_filter
@@ -25,7 +26,7 @@ classdef binaural_renderer < handle
                 ,mod([theta,0]*180/pi,360))).^2,2  ) );
             obj.hrtf_coefficients = [squeeze(obj.binaural_source.hrtf.Data.IR(ind,1,:)),...
                                      squeeze(obj.binaural_source.hrtf.Data.IR(ind,2,:))];
-            obj.binaural_filter  = OLS_convolver(obj.hrtf_coefficients, length(obj.binaural_source.source_signal));
+            obj.binaural_filter  = OLS_convolver(obj.hrtf_coefficients, length(obj.binaural_source.source_signal),'spectrum');
             obj.output_signal = zeros(size(obj.binaural_source.source_signal,1), 2);
         end
         
@@ -40,11 +41,11 @@ classdef binaural_renderer < handle
         end
         
         function obj = render(obj)
-            obj.output_signal = (1/norm(obj.binaural_source.position-obj.receiver) *...
-                obj.binaural_filter.convolve(obj.binaural_source.source_signal));
-            if size( obj.output_signal , 2 ) == 1
-                obj.output_signal = repmat(obj.output_signal , 1, 2);
-            end
+            [filter_out,obj.output_ix] = obj.binaural_filter.convolve(obj.binaural_source.source_signal);
+            obj.output_signal = 1/norm(obj.binaural_source.position-obj.receiver) * filter_out;
+          %  if size( obj.output_signal , 2 ) == 1
+          %      obj.output_signal = repmat(obj.output_signal , 1, 2);
+          %  end
         end
     end
 end

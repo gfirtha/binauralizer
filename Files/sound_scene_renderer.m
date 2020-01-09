@@ -33,14 +33,14 @@ classdef sound_scene_renderer < handle
         
         function output = render(obj, input)
             %% Only binauralization job
-            if (isempty(obj.wfs_renderer))            
-               output = 0;
-               for n = 1 : length(obj.binaural_renderer)
-                   obj.binaural_renderer{n}.binaural_source.set_input(input(:,n));
-                   obj.binaural_renderer{n}.render;
-                   output = output + obj.binaural_renderer{n}.output_signal;
-               end
-            %% Sound field synthesis job
+            if (isempty(obj.wfs_renderer))
+                output = 0;
+                for n = 1 : length(obj.binaural_renderer)
+                    obj.binaural_renderer{n}.binaural_source.set_input(input(:,n));
+                    obj.binaural_renderer{n}.render;
+                    output = output + obj.binaural_renderer{n}.output_signal;
+                end
+                %% Sound field synthesis job
             else
                 wfs_output = 0;
                 for m = 1 : length(obj.wfs_renderer)
@@ -54,8 +54,13 @@ classdef sound_scene_renderer < handle
                     obj.binaural_renderer{n}.render;
                     output = output + obj.binaural_renderer{n}.output_signal;
                 end
-                
+                output = ifft(output);
+                output = output(obj.binaural_renderer{1}.output_ix(1):obj.binaural_renderer{1}.output_ix(2));
+                if ~isreal(output)
+                    output = [real(output), imag(output)];
+                end
             end
+            
         end
     end
 end
