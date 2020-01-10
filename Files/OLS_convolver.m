@@ -17,6 +17,7 @@ classdef OLS_convolver < base_fft_convolver
             else
                 obj.output_mode = 'time_signal';
             end
+            
             obj.N_filt = min( size( varargin{1}, 1 ), varargin{2} );
             obj.N_fft =  2^nextpow2( min(obj.block_size + size( coefficients, 1 ), 2*obj.block_size) - 1 );
             if size(coefficients,1) <= obj.block_size
@@ -77,6 +78,14 @@ classdef OLS_convolver < base_fft_convolver
                             varargout{1} = output;
                         case 'spectrum'
                             
+                            if obj.N_fft <= 2*length(input)
+                                ix = [obj.N_fft - length(input) + 1 , length(output_fft)];
+                            else
+                                ix = [length(input) + 1  , 2*length(input)];
+                            end
+                            varargout{1} = output_fft;
+                            varargout{2} = ix;
+                            
                     end
                 case 'short_convolution'
                     input_fft =  fft( [ obj.state_buffer; input], obj.N_fft );
@@ -96,7 +105,6 @@ classdef OLS_convolver < base_fft_convolver
                             varargout{2} = ix;
                     end
             end
-            
         end
     end
 end

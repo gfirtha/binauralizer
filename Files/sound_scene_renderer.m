@@ -1,7 +1,8 @@
 classdef sound_scene_renderer < handle
     %RENDERER Summary of this class goes here
     %   Detailed explanation goes here
-    
+    % TODO: make input, rendeder out and binauarl buses
+    % and "wire" them up
     properties
         wfs_renderer
         binaural_renderer
@@ -34,31 +35,30 @@ classdef sound_scene_renderer < handle
         function output = render(obj, input)
             %% Only binauralization job
             if (isempty(obj.wfs_renderer))
-                output = 0;
+                output_signal = signal;
                 for n = 1 : length(obj.binaural_renderer)
-                    obj.binaural_renderer{n}.binaural_source.set_input(input(:,n));
+                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(input(:,n));
                     obj.binaural_renderer{n}.render;
-                    output = output + obj.binaural_renderer{n}.output_signal;
+                    output_signal.add_spectra(obj.binaural_renderer{n}.output_signal);
                 end
+                output = output_signal.get_signal;
                 %% Sound field synthesis job
             else
                 wfs_output = 0;
                 for m = 1 : length(obj.wfs_renderer)
-                    obj.wfs_renderer{m}.virtual_source.set_input(input(:,m));
+                    obj.wfs_renderer{m}.virtual_source.source_signal.set_signal(input(:,m));
                     obj.wfs_renderer{m}.render;
-                    wfs_output = wfs_output + cell2mat(obj.wfs_renderer{m}.output_signal);
+                    
+                    wfs_output = wfs_output + cell2mat(cellfun( @(x) x.time_series,...
+                                    obj.wfs_renderer{m}.output_signal , 'UniformOutput', false));   
                 end
-                output = 0;
+                output_signal = signal;
                 for n = 1 : length(obj.binaural_renderer)
-                    obj.binaural_renderer{n}.binaural_source.set_input(wfs_output(:,n));
+                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(wfs_output(:,n));
                     obj.binaural_renderer{n}.render;
-                    output = output + obj.binaural_renderer{n}.output_signal;
+                    output_signal.add_spectra(obj.binaural_renderer{n}.output_signal);
                 end
-                output = ifft(output);
-                output = output(obj.binaural_renderer{1}.output_ix(1):obj.binaural_renderer{1}.output_ix(2));
-                if ~isreal(output)
-                    output = [real(output), imag(output)];
-                end
+                output = output_signal.get_signal;
             end
             
         end
