@@ -83,16 +83,20 @@ classdef sound_scene < handle
         function obj = create_binaural_source(obj, position, orientation, gui, hrtf)
             idx = length(obj.binaural_sources) + 1;
             obj.binaural_sources{idx} = binaural_source(idx, position, orientation, hrtf);
-            gui.binaural_source_points{idx} = drawpoint(gui.axes,...
-                'Position',position,...
-                'Label',sprintf('%d',idx),'LabelVisible','Off');
-            addlistener(gui.binaural_source_points{idx} ,'MovingROI',@allevents);
-            function allevents(~,evt)
-                obj.binaural_sources{str2double(evt.Source.Label)}.position = evt.CurrentPosition;
+            gui.binaural_source_points{idx} = gui.draw_loudspeaker(position,0.05,...
+                cart2pol(orientation(1),orientation(2))*180/pi,idx);
+            
+            draggable(gui.binaural_source_points{idx},@update_binaural_position, @update_binaural_orientation);
+            function update_binaural_position(binaural_source)
+                obj.binaural_sources{binaural_source.UserData.Label}.position...
+                    = gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Origin;
                 for n = 1 : length(obj.scene_renderer.wfs_renderer)
                     obj.scene_renderer.update_wfs_renderers(n);
                 end
-                obj.scene_renderer.update_binaural_renderers(str2double(evt.Source.Label));
+                obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label);
+            end
+            function update_binaural_orientation(binaural_source)
+                sprintf('anyad')
             end
         end
         

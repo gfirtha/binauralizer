@@ -10,12 +10,7 @@ classdef listener_space_axes < handle
     end
     
     methods
-        function obj = listener_space_axes()
-            %LISTENER_SPACE_AXES Construct an instance of this class
-            %   Detailed explanation goes here
-        end
-        
-        function draw_gui(obj,gui_handle)
+        function obj = listener_space_axes(gui_handle)
             obj.axes = gui_handle;
             axes(obj.axes);
             grid on
@@ -24,6 +19,7 @@ classdef listener_space_axes < handle
             xlim([-3,3]);
             ylim([-3,3]);
         end
+        
         function receiver = draw_head(obj,pos,R)
             N = 20;
             fi = (0:2*pi/N:2*pi*(1-1/N));
@@ -57,6 +53,28 @@ classdef listener_space_axes < handle
             receiver.UserData = struct( 'Label', 1,...
                 'Origin', [ mean(receiver.Vertices(:,1)), mean(receiver.Vertices(:,2))  ],...
                 'Orientation', 0 );
+        end
+        
+        
+        function loudspeaker = draw_loudspeaker(obj,pos,R,orientation,idx)
+            x1 = [  -1.8  -1.8  -1  -1 ]'*R;
+            y1 = [   -1    1   1   -1 ]'*R;
+            x2 = [   -1 -1    0   0 ]'*R;
+            y2 = [   -1    1  1.5 -1.5 ]'*R;
+            x = [x1,x2];
+            y = [y1,y2];
+            x = x - mean(mean(x));
+            y = y - mean(mean(y));
+            
+            c = [0.2 0.2 0.2;
+                0.5 0.5 0.5];
+            loudspeaker = patch(gca, x + pos(1), y + pos(2),[0;1]);
+            set(loudspeaker,'FaceVertexCData',c);
+            loudspeaker.UserData = struct( 'Label', idx,...
+                'Origin', [ mean(loudspeaker.Vertices(:,1)), mean(loudspeaker.Vertices(:,2))  ],...
+                'Orientation', orientation );
+            rotate(loudspeaker,[0 0 1], orientation,...
+                    [loudspeaker.UserData.Origin(1),loudspeaker.UserData.Origin(2),0]);
         end
         
         function [rois,sourcePosition] = update_sources(obj,setup)
