@@ -17,7 +17,7 @@ classdef sound_scene < handle
             obj.create_receiver(gui);
             switch setup.Rendering
                 case 'Binaural'
-                    pos = get_default_layout(setup.Input_stream.info.NumChannels, 2);
+                    pos = get_default_layout(setup.Input_stream.info.NumChannels, 1.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
                         obj.create_binaural_source(pos(n,:),-pos(n,:), gui, setup.HRTF);
                         obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1));
@@ -41,7 +41,7 @@ classdef sound_scene < handle
         
         function obj = create_receiver(obj, gui)
             pos = [0,0];
-            R = 0.2;
+            R = 0.15;
             obj.receiver = receiver(pos,0);
             gui.receiver = gui.draw_head(pos,R);
             draggable(gui.receiver,@update_receiver_position, @update_receiver_orientation);
@@ -68,13 +68,24 @@ classdef sound_scene < handle
         function obj = create_virtual_source(obj, position, orientation, gui)
             idx = length(obj.virtual_sources) + 1;
             obj.virtual_sources{idx} = virtual_source(idx, position, orientation);
-            gui.virtual_source_points{idx} = drawpoint(gui.axes,...
-                'Position',position,'Color','red','Label',sprintf('%d',idx),'LabelVisible','Off');
-            addlistener(gui.virtual_source_points{idx} ,'MovingROI',@allevents);
-            function allevents(~,evt)
-                obj.virtual_sources{str2double(evt.Source.Label)}.position = evt.CurrentPosition;
-                obj.scene_renderer.update_wfs_renderers(str2double(evt.Source.Label));
+            gui.virtual_source_points{idx} = gui.draw_virtual_source(position,...
+                cart2pol(orientation(1),orientation(2))*180/pi,idx);
+            
+            draggable(gui.virtual_source_points{idx},@update_virtual_position, @update_virtual_orientation);
+            function update_virtual_position(virtual_source)
             end
+            function update_virtual_orientation(virtual_source)
+                sprintf('anyad')
+            end
+            
+%             obj.virtual_sources{idx} = virtual_source(idx, position, orientation);
+%             gui.virtual_source_points{idx} = drawpoint(gui.axes,...
+%                 'Position',position,'Color','red','Label',sprintf('%d',idx),'LabelVisible','Off');
+%             addlistener(gui.virtual_source_points{idx} ,'MovingROI',@allevents);
+%             function allevents(~,evt)
+%                 obj.virtual_sources{str2double(evt.Source.Label)}.position = evt.CurrentPosition;
+%                 obj.scene_renderer.update_wfs_renderers(str2double(evt.Source.Label));
+%             end
         end
         
         function obj = delete_virtual_source(obj, virt_source_idx, gui)
@@ -85,7 +96,7 @@ classdef sound_scene < handle
         function obj = create_binaural_source(obj, position, orientation, gui, hrtf)
             idx = length(obj.binaural_sources) + 1;
             obj.binaural_sources{idx} = binaural_source(idx, position, orientation, hrtf);
-            gui.binaural_source_points{idx} = gui.draw_loudspeaker(position,0.05,...
+            gui.binaural_source_points{idx} = gui.draw_loudspeaker(position,0.04,...
                 cart2pol(orientation(1),orientation(2))*180/pi,idx);
             
             draggable(gui.binaural_source_points{idx},@update_binaural_position, @update_binaural_orientation);
