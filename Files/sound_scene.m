@@ -36,9 +36,7 @@ classdef sound_scene < handle
                     gui.axes.XLim = (setup.renderer_setup.R+1)*[-1,1];
                     gui.axes.YLim = (setup.renderer_setup.R+1)*[-1,1];
             end
-            
             obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.binaural_sources,obj.receiver, setup);
-            
         end
         
         function obj = create_receiver(obj, gui)
@@ -48,7 +46,7 @@ classdef sound_scene < handle
             gui.receiver = gui.draw_head(pos,R);
             draggable(gui.receiver,@update_receiver_position, @update_receiver_orientation);
             function update_receiver_position(receiver)
-                pos = [gui.receiver.UserData.Origin];
+                pos = gui.receiver.UserData.Origin;
                 obj.receiver.position = pos;
                 for n = 1 : length(obj.scene_renderer.binaural_renderer)
                     obj.scene_renderer.update_binaural_renderers(n);
@@ -61,6 +59,10 @@ classdef sound_scene < handle
                 end
             end
             
+        end
+        function obj = delete_receiver(obj, gui)
+            obj.receiver = {};
+            delete(gui.receiver);
         end
         
         function obj = create_virtual_source(obj, position, orientation, gui)
@@ -106,6 +108,7 @@ classdef sound_scene < handle
         end
         
         function obj = delete(obj,gui)
+            obj.delete_receiver(gui);
             N = length(obj.virtual_sources);
             for n = 1 : N
                 obj.delete_virtual_source(N-n+1,gui);
@@ -122,4 +125,3 @@ classdef sound_scene < handle
         end
     end
 end
-
