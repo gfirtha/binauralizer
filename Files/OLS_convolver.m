@@ -5,6 +5,8 @@ classdef OLS_convolver < base_fft_convolver
         block_size
         part_ix
         mode
+        prefilter
+        unfiltered_coefficients
         output_mode
     end
     
@@ -43,6 +45,7 @@ classdef OLS_convolver < base_fft_convolver
                         1i*coefficients(obj.part_ix(n,1):obj.part_ix(n,2),2) , obj.N_fft, 1);
                 end
             end
+            obj.unfiltered_coefficients = obj.coefficients;
         end
         
         function obj = update_coefficients(obj,coefficients)
@@ -53,6 +56,33 @@ classdef OLS_convolver < base_fft_convolver
                     obj.coefficients{n} = fft( coefficients(obj.part_ix(n,1):obj.part_ix(n,2),1) +...
                         1i*coefficients(obj.part_ix(n,1):obj.part_ix(n,2),2) , obj.N_fft, 1);
                 end
+            end
+            obj.unfiltered_coefficients = obj.coefficients;
+            if ~isempty(obj.prefilter) 
+                obj.prefilter_coefficients;
+            end
+        end
+        
+        function obj = update_prefilter(obj,prefilter,input_mode)
+            switch input_mode
+                case 'frequency_domain'
+                    obj.prefilter = prefilter;
+                case 'time_domain'
+                    obj.prefilter = fft(prefilter, obj.N_fft );
+            end
+            obj.prefilter_coefficients;
+        end
+        function obj = prefilter_coefficients(obj)
+            % TODO: extend prefilter for UPOLS convolution
+            if ~all(obj.prefilter==1)
+                for n = 1 : size(obj.part_ix,1)
+                    if size( obj.coefficients, 2 ) == 1
+                        obj.coefficients{n} = obj.prefilter.*obj.unfiltered_coefficients{1};
+                    else
+                        obj.coefficients{n} = bsxfun( @times, obj.prefilter, obj.unfiltered_coefficients(obj.part_ix(n,:):obj.part_ix(n,:)) ) ;
+                    end
+                end
+%            else 
             end
         end
         

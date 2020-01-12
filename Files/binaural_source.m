@@ -7,16 +7,18 @@ classdef binaural_source < handle
         source_signal
         position
         orientation
+        source_type
         hrtf
     end
     
     methods
-        function obj = binaural_source(idx, position, orientation, hrtf)
+        function obj = binaural_source(idx, position, orientation, hrtf, type)
             obj.source_index = idx;
             obj.position = position;
             obj.orientation = orientation;
             obj.source_signal = signal;
             obj.hrtf = hrtf;
+            obj.source_type = type;
         end
         
         function obj = set_input(obj,input_signal)

@@ -19,18 +19,18 @@ classdef sound_scene < handle
                 case 'Binaural'
                     pos = get_default_layout(setup.Input_stream.info.NumChannels, 1.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
-                        obj.create_binaural_source(pos(n,:),-pos(n,:), gui, setup.HRTF);
+                        obj.create_binaural_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.HRTF, setup.Binaural_source_type);
                         obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1));
                     end
                 otherwise
                     pos = get_default_layout(setup.Input_stream.info.NumChannels,  setup.renderer_setup.R + 0.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
-                        obj.create_virtual_source(pos(n,:),-pos(n,:), gui);
+                        obj.create_virtual_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.Virtual_source_type);
                         obj.virtual_sources{n}.set_input(zeros(setup.Block_size,1));
                     end
                     pos_ssd = get_default_layout(setup.renderer_setup.N,setup.renderer_setup.R);
                     for n = 1 : setup.renderer_setup.N
-                        obj.create_binaural_source( pos_ssd(n,:),-pos_ssd(n,:), gui, setup.HRTF);
+                        obj.create_binaural_source( pos_ssd(n,:),-pos_ssd(n,:)/norm(pos_ssd(n,:)), gui, setup.HRTF, setup.Binaural_source_type);
                         obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1));
                     end
                     gui.axes.XLim = (setup.renderer_setup.R+1)*[-1,1];
@@ -42,50 +42,45 @@ classdef sound_scene < handle
         function obj = create_receiver(obj, gui)
             pos = [0,0];
             R = 0.15;
-            obj.receiver = receiver(pos,0);
+            obj.receiver = receiver(pos,[1,0]);
             gui.receiver = gui.draw_head(pos,R);
             draggable(gui.receiver,@update_receiver_position, @update_receiver_orientation);
             function update_receiver_position(receiver)
-                pos = gui.receiver.UserData.Origin;
-                obj.receiver.position = pos;
+                obj.receiver.position = gui.receiver.UserData.Origin;
                 for n = 1 : length(obj.scene_renderer.binaural_renderer)
-                    obj.scene_renderer.update_binaural_renderers(n);
+                    obj.scene_renderer.update_binaural_renderers(n,'receiver_moved');
                 end
             end
             function update_receiver_orientation(receiver)
-                obj.receiver.orientation = [ gui.receiver.UserData.Orientation ];
+                obj.receiver.orientation = [cosd(gui.receiver.UserData.Orientation),...
+                                            sind(gui.receiver.UserData.Orientation)];
                 for n = 1 : length(obj.scene_renderer.binaural_renderer)
-                    obj.scene_renderer.update_binaural_renderers(n);
+                    obj.scene_renderer.update_binaural_renderers(n, 'receiver_rotated' );
                 end
             end
             
         end
+        
         function obj = delete_receiver(obj, gui)
             obj.receiver = {};
             delete(gui.receiver);
         end
         
-        function obj = create_virtual_source(obj, position, orientation, gui)
+        function obj = create_virtual_source(obj, position, orientation, gui, type)
             idx = length(obj.virtual_sources) + 1;
-            obj.virtual_sources{idx} = virtual_source(idx, position, orientation);
+            obj.virtual_sources{idx} = virtual_source(idx, position, orientation, type);
             gui.virtual_source_points{idx} = gui.draw_virtual_source(position,...
                 cart2pol(orientation(1),orientation(2))*180/pi,idx);
             
             draggable(gui.virtual_source_points{idx},@update_virtual_position, @update_virtual_orientation);
             function update_virtual_position(virtual_source)
+                obj.virtual_sources{virtual_source.UserData.Label}.position...
+                    = gui.virtual_source_points{virtual_source.UserData.Label}.UserData.Origin;
+                obj.scene_renderer.update_wfs_renderers(virtual_source.UserData.Label);
             end
             function update_virtual_orientation(virtual_source)
                 sprintf('anyad')
             end
-            
-%             obj.virtual_sources{idx} = virtual_source(idx, position, orientation);
-%             gui.virtual_source_points{idx} = drawpoint(gui.axes,...
-%                 'Position',position,'Color','red','Label',sprintf('%d',idx),'LabelVisible','Off');
-%             addlistener(gui.virtual_source_points{idx} ,'MovingROI',@allevents);
-%             function allevents(~,evt)
-%                 obj.virtual_sources{str2double(evt.Source.Label)}.position = evt.CurrentPosition;
-%                 obj.scene_renderer.update_wfs_renderers(str2double(evt.Source.Label));
-%             end
         end
         
         function obj = delete_virtual_source(obj, virt_source_idx, gui)
@@ -93,11 +88,11 @@ classdef sound_scene < handle
             delete(gui.virtual_source_points{virt_source_idx});
         end
         
-        function obj = create_binaural_source(obj, position, orientation, gui, hrtf)
+        function obj = create_binaural_source(obj, position, orientation, gui, hrtf, type)
             idx = length(obj.binaural_sources) + 1;
-            obj.binaural_sources{idx} = binaural_source(idx, position, orientation, hrtf);
-            gui.binaural_source_points{idx} = gui.draw_loudspeaker(position,0.04,...
-                cart2pol(orientation(1),orientation(2))*180/pi,idx);
+            obj.binaural_sources{idx} = binaural_source(idx, position, orientation, hrtf, type);
+            gui.binaural_source_points{idx} = ...
+                gui.draw_loudspeaker(position,type.R,cart2pol(orientation(1),orientation(2))*180/pi,idx);
             
             draggable(gui.binaural_source_points{idx},@update_binaural_position, @update_binaural_orientation);
             function update_binaural_position(binaural_source)
@@ -106,10 +101,16 @@ classdef sound_scene < handle
                 for n = 1 : length(obj.scene_renderer.wfs_renderer)
                     obj.scene_renderer.update_wfs_renderers(n);
                 end
-                obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label);
+                obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label,'source_moved');
             end
             function update_binaural_orientation(binaural_source)
-                sprintf('anyad')
+                obj.binaural_sources{binaural_source.UserData.Label}.orientation...
+                    = [ cosd(gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Orientation),...
+                        sind(gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Orientation)];
+                for n = 1 : length(obj.scene_renderer.wfs_renderer)
+                    obj.scene_renderer.update_wfs_renderers(n);
+                end
+                obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label,'source_rotated');
             end
         end
         

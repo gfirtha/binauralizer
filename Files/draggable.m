@@ -270,7 +270,7 @@ function rotatefcn(obj,eventdata,h)
     % Computing movement
     dpt = cpt - ipt;
     setappdata(h,'old_dpt',dpt*360);
-    rot = sum(dpt)*180 - h.UserData.Orientation;
+    rot = mod(sum(dpt)*180 - h.UserData.Orientation,180);
     rotate(h,[0 0 1], rot,...
         [h.UserData.Origin(1),h.UserData.Origin(2),0]);
     h.UserData.Orientation = h.UserData.Orientation + rot;

@@ -4,6 +4,7 @@ classdef wfs_renderer < handle
         fs
         c
         virtual_source
+        source_directivity
         secondary_source_distribution
         output_signal
         prefilter
@@ -13,9 +14,10 @@ classdef wfs_renderer < handle
     end
     
     methods
-        function obj = wfs_renderer(virtual_source,SSD, fs)
+        function obj = wfs_renderer(virtual_source,SSD, fs, directivity)
             obj.fs = fs;
             obj.c = 343.1;
+            obj.source_directivity = directivity;
             obj.virtual_source = virtual_source;
             obj.secondary_source_distribution = SSD;
             for n = 1 : length(SSD)
