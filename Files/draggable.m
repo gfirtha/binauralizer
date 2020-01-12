@@ -79,6 +79,7 @@ if ~(getAsyncKeyState(VirtualKeyCode.VK_CONTROL))
 else
     setappdata(obj,'initial_position',get_position(obj));
     setappdata(obj,'initial_extent',compute_extent(obj));
+    setappdata(obj,'initial_orientation',get_orientation(obj));
     setappdata(obj,'initial_point',get(gca,'CurrentPoint'));
     set(gcf,'WindowButtonDownFcn',{@activate_rotatefcn,obj});
     set(gcf,'WindowButtonUpFcn',{@deactivate_rotatefcn,obj});
@@ -175,6 +176,14 @@ if ~isempty(user_movefcn)
     feval(user_movefcn,h);
 end
 
+function orient = get_orientation(obj)
+props = get(obj);
+if isfield(props.UserData,'Orientation')
+    orient = props.UserData.Orientation;
+else
+    error('Unable to find orientation');
+end
+
 % =========================================================================
 % FUNCTION get_position
 %   Return an object's position: [x y [z / w h]] or [xdata; ydata]
@@ -262,7 +271,7 @@ function rotatefcn(obj,eventdata,h)
     current_point = get(gca,'CurrentPoint');
     initial_point = getappdata(h,'initial_point');
     user_rotatefcn = getappdata(h,'user_rotatefcn');
-
+    fi_0 = getappdata(h,'initial_orientation');
     % Retrieving (x,y) couple for current and initial points
     cpt = current_point(1,1:2);
     ipt = initial_point(1,1:2);
@@ -270,7 +279,7 @@ function rotatefcn(obj,eventdata,h)
     % Computing movement
     dpt = cpt - ipt;
     setappdata(h,'old_dpt',dpt*360);
-    rot = mod(sum(dpt)*180 - h.UserData.Orientation,180);
+        rot = sum(dpt)*180 - h.UserData.Orientation + fi_0;
     rotate(h,[0 0 1], rot,...
         [h.UserData.Origin(1),h.UserData.Origin(2),0]);
     h.UserData.Orientation = h.UserData.Orientation + rot;

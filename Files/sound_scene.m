@@ -25,7 +25,7 @@ classdef sound_scene < handle
                 otherwise
                     pos = get_default_layout(setup.Input_stream.info.NumChannels,  setup.renderer_setup.R + 0.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
-                        obj.create_virtual_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.Virtual_source_type);
+                        obj.create_virtual_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.Virtual_source_type, setup.Rendering);
                         obj.virtual_sources{n}.set_input(zeros(setup.Block_size,1));
                     end
                     pos_ssd = get_default_layout(setup.renderer_setup.N,setup.renderer_setup.R);
@@ -66,9 +66,9 @@ classdef sound_scene < handle
             delete(gui.receiver);
         end
         
-        function obj = create_virtual_source(obj, position, orientation, gui, type)
+        function obj = create_virtual_source(obj, position, orientation, gui, source_type, rendering)
             idx = length(obj.virtual_sources) + 1;
-            obj.virtual_sources{idx} = virtual_source(idx, position, orientation, type);
+            obj.virtual_sources{idx} = virtual_source(idx, position, orientation, source_type, rendering);
             gui.virtual_source_points{idx} = gui.draw_virtual_source(position,...
                 cart2pol(orientation(1),orientation(2))*180/pi,idx);
             
@@ -76,7 +76,7 @@ classdef sound_scene < handle
             function update_virtual_position(virtual_source)
                 obj.virtual_sources{virtual_source.UserData.Label}.position...
                     = gui.virtual_source_points{virtual_source.UserData.Label}.UserData.Origin;
-                obj.scene_renderer.update_wfs_renderers(virtual_source.UserData.Label);
+                 obj.scene_renderer.update_SFS_renderers(virtual_source.UserData.Label);
             end
             function update_virtual_orientation(virtual_source)
                 sprintf('anyad')
@@ -98,8 +98,8 @@ classdef sound_scene < handle
             function update_binaural_position(binaural_source)
                 obj.binaural_sources{binaural_source.UserData.Label}.position...
                     = gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Origin;
-                for n = 1 : length(obj.scene_renderer.wfs_renderer)
-                    obj.scene_renderer.update_wfs_renderers(n);
+                for n = 1 : length(obj.scene_renderer.SFS_renderers)
+                    obj.scene_renderer.update_SFS_renderers(n);
                 end
                 obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label,'source_moved');
             end
@@ -108,7 +108,7 @@ classdef sound_scene < handle
                     = [ cosd(gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Orientation),...
                         sind(gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Orientation)];
                 for n = 1 : length(obj.scene_renderer.wfs_renderer)
-                    obj.scene_renderer.update_wfs_renderers(n);
+                    obj.scene_renderer.update_SFS_renderers(n);
                 end
                 obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label,'source_rotated');
             end

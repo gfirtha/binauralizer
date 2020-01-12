@@ -99,8 +99,8 @@ classdef listener_space_axes < handle
             x = [x_source;x_w1;x_w2;x_w3]';
             y = [y_source;y_w1;y_w2;y_w3]';
             
-           % x = x - mean(mean(x));
-            %y = y - mean(mean(y));
+            x = x - mean(mean(x));
+            y = y - mean(mean(y));
             
             c = [255 0 0;
                 0 0 0;
@@ -110,7 +110,7 @@ classdef listener_space_axes < handle
             set(virtual_source,'FaceVertexCData',c,'FaceLighting','gouraud');
             
             virtual_source.UserData = struct( 'Label', idx,...
-                'Origin', [ mean(virtual_source.Vertices(:,1)), mean(virtual_source.Vertices(:,1))  ],...
+                'Origin', [ mean(virtual_source.Vertices(:,1)), mean(virtual_source.Vertices(:,2))  ],...
                 'Orientation', orientation );
             
             rotate(virtual_source,[0 0 1], orientation,...

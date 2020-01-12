@@ -35,7 +35,7 @@ classdef wfs_renderer < handle
             obj.delay_line = delay_line(N*N_blocks,N_blocks, N);
         end
         
-        function obj = update_driving_function(obj)
+        function obj = update_renderer(obj)
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
             [ obj.amp, obj.delay ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0, obj.fs, obj.c );            

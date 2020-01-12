@@ -72,6 +72,7 @@ classdef OLS_convolver < base_fft_convolver
             end
             obj.prefilter_coefficients;
         end
+        
         function obj = prefilter_coefficients(obj)
             % TODO: extend prefilter for UPOLS convolution
             if ~all(obj.prefilter==1)

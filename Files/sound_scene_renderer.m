@@ -4,7 +4,7 @@ classdef sound_scene_renderer < handle
     % TODO: make input, rendeder out and binauarl buses
     % and "wire" them up
     properties
-        wfs_renderer
+        SFS_renderer
         binaural_renderer
         directivity_tables
     end
@@ -12,6 +12,7 @@ classdef sound_scene_renderer < handle
     methods
         function obj = sound_scene_renderer(virtual_sources,binaural_sources,receiver, setup)
             
+            % Get all required directivity characteristics
             N_fft = 2^nextpow2( min(setup.Block_size + size(setup.HRTF.Data.IR,3), 2*setup.Block_size) - 1 );
             cnt = 0;
             for n = 1 : length(virtual_sources)
@@ -48,11 +49,15 @@ classdef sound_scene_renderer < handle
                     idx = obj.find_dir_table(obj.directivity_tables,binaural_sources{n});
                     obj.binaural_renderer{n} = binaural_renderer(binaural_sources{n}, receiver,obj.directivity_tables{idx});
                 end
-                
             else % virtual sound field synthesis scenario
                 for n = 1 : length(virtual_sources)
                     idx = obj.find_dir_table(obj.directivity_tables,virtual_sources{n});
-                    obj.wfs_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx});
+                    switch virtual_sources{n}.renderer_type
+                        case 'VBAP'
+                            obj.SFS_renderer{n} = vbap_renderer(virtual_sources{n}, binaural_sources);
+                        case 'WFS'
+                            obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx});
+                    end
                 end
                 for n = 1 : length(binaural_sources)
                     idx = obj.find_dir_table(obj.directivity_tables,binaural_sources{n});
@@ -60,15 +65,16 @@ classdef sound_scene_renderer < handle
                 end
             end
         end
-        function update_wfs_renderers(obj, idx)
-            obj.wfs_renderer{idx}.update_driving_function;
-        end
         
         function idx = find_dir_table(obj,dir_tables, source)
             a = cellfun( @(x) strcmp( source.source_type.Shape,x),...
                 cellfun( @(x) x.type.Shape, dir_tables, 'UniformOutput', false) );
             b = (source.source_type.R == cell2mat(cellfun( @(x) x.type.R, dir_tables, 'UniformOutput', false)));
             idx = find(a&b);
+        end
+        
+        function update_SFS_renderers(obj, idx)
+            obj.SFS_renderer{idx}.update_renderer;
         end
         
         function update_binaural_renderers(obj, idx, type)
@@ -88,7 +94,7 @@ classdef sound_scene_renderer < handle
         
         function output = render(obj, input)
             %% Only binauralization job
-            if (isempty(obj.wfs_renderer))
+            if (isempty(obj.SFS_renderer))
                 output_signal = signal;
                 for n = 1 : length(obj.binaural_renderer)
                     obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(input(:,n));
@@ -98,17 +104,17 @@ classdef sound_scene_renderer < handle
                 output = output_signal.get_signal;
                 %% Sound field synthesis job
             else
-                wfs_output = 0;
-                for m = 1 : length(obj.wfs_renderer)
-                    obj.wfs_renderer{m}.virtual_source.source_signal.set_signal(input(:,m));
-                    obj.wfs_renderer{m}.render;
+                SFS_output = 0;
+                for m = 1 : length(obj.SFS_renderer)
+                    obj.SFS_renderer{m}.virtual_source.source_signal.set_signal(input(:,m));
+                    obj.SFS_renderer{m}.render;
                     
-                    wfs_output = wfs_output + cell2mat(cellfun( @(x) x.time_series,...
-                        obj.wfs_renderer{m}.output_signal , 'UniformOutput', false));
+                    SFS_output = SFS_output + cell2mat(cellfun( @(x) x.time_series,...
+                        obj.SFS_renderer{m}.output_signal , 'UniformOutput', false));
                 end
                 output_signal = signal;
                 for n = 1 : length(obj.binaural_renderer)
-                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(wfs_output(:,n));
+                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(SFS_output(:,n));
                     obj.binaural_renderer{n}.render;
                     output_signal.add_spectra(obj.binaural_renderer{n}.output_signal);
                 end

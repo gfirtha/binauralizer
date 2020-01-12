@@ -8,17 +8,19 @@ classdef virtual_source < handle
         position
         orientation
         source_type
+        renderer_type
     end
     
     methods
-        function obj = virtual_source(idx, position, orientation, type)
+        function obj = virtual_source(idx, position, orientation, source_type, renderer_type)
             %VIRTUAL_SOURCE Construct an instance of this class
             %   Detailed explanation goes here
             obj.source_index = idx;
             obj.position = position;
             obj.source_signal = signal;
             obj.orientation = orientation;
-            obj.source_type = type;
+            obj.source_type = source_type;
+            obj.renderer_type = renderer_type;
         end
 
         function obj = set_input(obj,input_signal)
