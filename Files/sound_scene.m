@@ -118,7 +118,13 @@ classdef sound_scene < handle
             obj.binaural_sources(bin_source_idx) = [];
             delete(gui.binaural_source_points{bin_source_idx});
         end
-        
+
+        % Reserved for multiple sound scene scenario (for comparing approaches)
+        function obj = save_sound_scene(obj)
+        end
+        function obj = load_sound_scene(obj)
+        end
+            
         function obj = delete(obj,gui)
             obj.delete_receiver(gui);
             N = length(obj.virtual_sources);

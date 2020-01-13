@@ -55,8 +55,8 @@ handles.sound_scene_setup = struct(  ...
 
 handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
                        'SamplesPerFrame',handles.sound_scene_setup.Block_size,'PlayCount',10);
-handles.gui = listener_space_axes(handles.axes1);
-handles.sound_scene = sound_scene(handles.gui,handles.sound_scene_setup);
+handles.sound_scene_gui = listener_space_axes(handles.axes1);
+handles.sound_scene = sound_scene(handles.sound_scene_gui,handles.sound_scene_setup);
 handles.output = hObject; 
 guidata(hObject, handles);
 
@@ -92,8 +92,8 @@ function load_file_btn_Callback(hObject, eventdata, handles)
 handles.sound_scene_setup.Input_file = strcat(path,file);
 handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
                        'SamplesPerFrame',handles.sound_scene_setup.Block_size);
-handles.sound_scene.delete(handles.gui);
-handles.sound_scene = sound_scene(handles.gui,handles.sound_scene_setup);
+handles.sound_scene.delete(handles.sound_scene_gui);
+handles.sound_scene = sound_scene(handles.sound_scene_gui,handles.sound_scene_setup);
 guidata(hObject,handles);
 
 % --- Executes on slider movement.
@@ -109,3 +109,26 @@ end
 function stop_btn_Callback(hObject, eventdata, handles)
 handles.stop_now = 1;
 guidata(hObject, handles);
+
+
+% --- Executes on selection change in renderer_select.
+function renderer_select_Callback(hObject, eventdata, handles)
+% hObject    handle to renderer_select (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: contents = cellstr(get(hObject,'String')) returns renderer_select contents as cell array
+%        contents{get(hObject,'Value')} returns selected item from renderer_select
+
+
+% --- Executes during object creation, after setting all properties.
+function renderer_select_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to renderer_select (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
