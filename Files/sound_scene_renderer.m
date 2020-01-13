@@ -22,7 +22,7 @@ classdef sound_scene_renderer < handle
                 end
             end
             for m = 1 : length(binaural_sources)
-                if isempty(get_dirtable_idx( obj.directivity_tables, binaural_sources{n}))
+                if isempty(get_dirtable_idx( obj.directivity_tables, binaural_sources{m}))
                     cnt = cnt + 1;
                     obj.directivity_tables{cnt} = directivity_table(binaural_sources{m}.source_type, N_fft, setup.Input_stream.SampleRate);
                 end
@@ -30,7 +30,7 @@ classdef sound_scene_renderer < handle
             
             if isempty(virtual_sources) % direct binauralization scenario
                 for n = 1 : length(binaural_sources)
-                    idx = find_dir_table(obj.directivity_tables,binaural_sources{n});
+                    idx = get_dirtable_idx(obj.directivity_tables,binaural_sources{n});
                     obj.binaural_renderer{n} = binaural_renderer(binaural_sources{n}, receiver,obj.directivity_tables{idx});
                 end
             else % virtual sound field synthesis scenario
