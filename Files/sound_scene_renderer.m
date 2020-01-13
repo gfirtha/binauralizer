@@ -16,29 +16,13 @@ classdef sound_scene_renderer < handle
             N_fft = 2^nextpow2( min(setup.Block_size + size(setup.HRTF.Data.IR,3), 2*setup.Block_size) - 1 );
             cnt = 0;
             for n = 1 : length(virtual_sources)
-                if ~isempty(obj.directivity_tables)
-                    a = cellfun( @(x) strcmp( virtual_sources{n}.source_type.Shape,x),...
-                        cellfun( @(x) x.type.Shape, obj.directivity_tables, 'UniformOutput', false) );
-                    b = (virtual_sources{n}.source_type.R == cell2mat(cellfun( @(x) x.type.R, obj.directivity_tables, 'UniformOutput', false))) ;
-                    if all(~(a&b))
-                        cnt = cnt + 1;
-                        obj.directivity_tables{cnt} = directivity_table(virtual_sources{n}.source_type, N_fft, setup.Input_stream.SampleRate);
-                    end
-                else
+                if isempty(get_dirtable_idx( obj.directivity_tables, virtual_sources{n}))
                     cnt = cnt + 1;
                     obj.directivity_tables{cnt} = directivity_table(virtual_sources{n}.source_type, N_fft, setup.Input_stream.SampleRate);
                 end
             end
             for m = 1 : length(binaural_sources)
-                if ~isempty(obj.directivity_tables)
-                    a = cellfun( @(x) strcmp( binaural_sources{m}.source_type.Shape,x),...
-                        cellfun( @(x) x.type.Shape, obj.directivity_tables, 'UniformOutput', false) );
-                    b = (binaural_sources{m}.source_type.R == cell2mat(cellfun( @(x) x.type.R, obj.directivity_tables, 'UniformOutput', false))) ;
-                    if all(~(a&b))
-                        cnt = cnt + 1;
-                        obj.directivity_tables{cnt} = directivity_table(binaural_sources{m}.source_type, N_fft, setup.Input_stream.SampleRate);
-                    end
-                else
+                if isempty(get_dirtable_idx( obj.directivity_tables, binaural_sources{n}))
                     cnt = cnt + 1;
                     obj.directivity_tables{cnt} = directivity_table(binaural_sources{m}.source_type, N_fft, setup.Input_stream.SampleRate);
                 end
@@ -46,31 +30,24 @@ classdef sound_scene_renderer < handle
             
             if isempty(virtual_sources) % direct binauralization scenario
                 for n = 1 : length(binaural_sources)
-                    idx = obj.find_dir_table(obj.directivity_tables,binaural_sources{n});
+                    idx = find_dir_table(obj.directivity_tables,binaural_sources{n});
                     obj.binaural_renderer{n} = binaural_renderer(binaural_sources{n}, receiver,obj.directivity_tables{idx});
                 end
             else % virtual sound field synthesis scenario
                 for n = 1 : length(virtual_sources)
-                    idx = obj.find_dir_table(obj.directivity_tables,virtual_sources{n});
+                    idx = get_dirtable_idx(obj.directivity_tables,virtual_sources{n});
                     switch virtual_sources{n}.renderer_type
                         case 'VBAP'
                             obj.SFS_renderer{n} = vbap_renderer(virtual_sources{n}, binaural_sources);
                         case 'WFS'
-                            obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx});
+                            obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx}, setup.renderer_setup.Antialiasing);
                     end
                 end
                 for n = 1 : length(binaural_sources)
-                    idx = obj.find_dir_table(obj.directivity_tables,binaural_sources{n});
+                    idx = get_dirtable_idx(obj.directivity_tables,binaural_sources{n});
                     obj.binaural_renderer{n} = binaural_renderer(binaural_sources{n}, receiver,obj.directivity_tables{idx});
                 end
             end
-        end
-        
-        function idx = find_dir_table(obj,dir_tables, source)
-            a = cellfun( @(x) strcmp( source.source_type.Shape,x),...
-                cellfun( @(x) x.type.Shape, dir_tables, 'UniformOutput', false) );
-            b = (source.source_type.R == cell2mat(cellfun( @(x) x.type.R, dir_tables, 'UniformOutput', false)));
-            idx = find(a&b);
         end
         
         function update_SFS_renderers(obj, idx)

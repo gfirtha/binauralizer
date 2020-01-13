@@ -92,13 +92,13 @@ classdef sound_scene < handle
             idx = length(obj.binaural_sources) + 1;
             obj.binaural_sources{idx} = binaural_source(idx, position, orientation, hrtf, type);
             gui.binaural_source_points{idx} = ...
-                gui.draw_loudspeaker(position,type.R,cart2pol(orientation(1),orientation(2))*180/pi,idx);
+                gui.draw_loudspeaker(position,type.R(1),cart2pol(orientation(1),orientation(2))*180/pi,idx);
             
             draggable(gui.binaural_source_points{idx},@update_binaural_position, @update_binaural_orientation);
             function update_binaural_position(binaural_source)
                 obj.binaural_sources{binaural_source.UserData.Label}.position...
                     = gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Origin;
-                for n = 1 : length(obj.scene_renderer.SFS_renderers)
+                for n = 1 : length(obj.scene_renderer.SFS_renderer)
                     obj.scene_renderer.update_SFS_renderers(n);
                 end
                 obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label,'source_moved');
@@ -107,7 +107,7 @@ classdef sound_scene < handle
                 obj.binaural_sources{binaural_source.UserData.Label}.orientation...
                     = [ cosd(gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Orientation),...
                         sind(gui.binaural_source_points{binaural_source.UserData.Label}.UserData.Orientation)];
-                for n = 1 : length(obj.scene_renderer.wfs_renderer)
+                for n = 1 : length(obj.scene_renderer.SFS_renderer)
                     obj.scene_renderer.update_SFS_renderers(n);
                 end
                 obj.scene_renderer.update_binaural_renderers(binaural_source.UserData.Label,'source_rotated');

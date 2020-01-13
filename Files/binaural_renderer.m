@@ -2,8 +2,6 @@ classdef binaural_renderer < handle
     %BINAURAL_JOB Summary of this class goes here
     %   Detailed explanation goes here
     
-    % Input: (set of?) binaural_sources
-    % Output: 2-channel binaural signals
     properties
         binaural_source
         receiver

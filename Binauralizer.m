@@ -27,28 +27,36 @@ hrtf_sofa = SOFAload('FABIAN_HRIR_measured_HATO_0.sofa');
 %hrtf_sofa = SOFAload('C1m.sofa');
 
 % Setup options:
-%   Rendering:                    'Binaural', 'WFS'
-%   Binaural/Virtual_source_type: 'point_source', 'circular_piston'
+%   Rendering:              'Binaural':        Binaural rendering only 
+%                           'WFS':             Wave Field Synthesis driving
+%                                              functions 
+%                           'VBAP':            Vector-based Amplitude
+%                                              Panning
+%   Binaural_source_type:   'point_source':    omnidirectional directivity,
+%                                              parameter: R (only for drawing)
+%                           'circular_piston': baffled piston directivity, 
+%                                              parameter: R radius 
+%                           'two_way_speaker': two baffled pistons, with
+%                                              Linkwitz-Riley crossover filter,
+%                                              parameter: [R_lp, R_hp] radii
 %
 %
 %
 %
-%
-handles.binauralizer_setup = struct(  ...
+handles.sound_scene_setup = struct(  ...
     'Input_file',               'gitL.wav',...
-    'Block_size',               1024/2, ...
-    'Input_stream',             [],...
+    'Block_size',               1024*4, ...
     'HRTF',                     hrtf_sofa, ...
     'Volume',                   0.5, ...
-    'Rendering',                'WFS',...
     'Binaural_source_type',     struct('Shape','circular_piston','R',0.06),...
-    'Virtual_source_type',      struct('Shape','point_source','R',0.02),...
-    'renderer_setup',           struct('R',2,'N',64));
+    'Virtual_source_type',      struct('Shape','point_source','R',0.05),...
+    'Rendering',                'WFS',...
+    'renderer_setup',           struct('R',2,'N',128/2,'Antialiasing','on'));
 
-handles.binauralizer_setup.Input_stream = dsp.AudioFileReader(handles.binauralizer_setup.Input_file,...
-                       'SamplesPerFrame',handles.binauralizer_setup.Block_size,'PlayCount',10);
+handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
+                       'SamplesPerFrame',handles.sound_scene_setup.Block_size,'PlayCount',10);
 handles.gui = listener_space_axes(handles.axes1);
-handles.sound_scene = sound_scene(handles.gui,handles.binauralizer_setup);
+handles.sound_scene = sound_scene(handles.gui,handles.sound_scene_setup);
 handles.output = hObject; 
 guidata(hObject, handles);
 
@@ -60,14 +68,14 @@ varargout{1} = handles.output;
 % --- Executes on button press in play_btn.
 function play_btn_Callback(hObject, eventdata, handles)
 handles.stop_now = 0;
-deviceWriter = audioDeviceWriter('SampleRate',handles.binauralizer_setup.Input_stream.SampleRate);
+deviceWriter = audioDeviceWriter('SampleRate',handles.sound_scene_setup.Input_stream.SampleRate);
 guidata(hObject,handles);
 elapsed_time = 0;
 i = 1;
-while (~isDone(handles.binauralizer_setup.Input_stream))&&(~handles.stop_now)
+while (~isDone(handles.sound_scene_setup.Input_stream))&&(~handles.stop_now)
     tic
-    output = handles.sound_scene.binauralize_sound_scene(handles.binauralizer_setup.Volume*...
-                                                         handles.binauralizer_setup.Input_stream());
+    output = handles.sound_scene.binauralize_sound_scene(handles.sound_scene_setup.Volume*...
+                                                         handles.sound_scene_setup.Input_stream());
     elapsed_time(i) = toc;
     deviceWriter(output);
     drawnow limitrate
@@ -76,21 +84,21 @@ while (~isDone(handles.binauralizer_setup.Input_stream))&&(~handles.stop_now)
    % mean(elapsed_time)
 end
 release(deviceWriter)
-release(handles.binauralizer_setup.Input_stream)
+release(handles.sound_scene_setup.Input_stream)
 
 % --- Executes on button press in load_file_btn.
 function load_file_btn_Callback(hObject, eventdata, handles)
 [file,path] = uigetfile('*.wav;*.mp3;*.aac;*.ac3');
-handles.binauralizer_setup.Input_file = strcat(path,file);
-handles.binauralizer_setup.Input_stream = dsp.AudioFileReader(handles.binauralizer_setup.Input_file,...
-                       'SamplesPerFrame',handles.binauralizer_setup.Block_size);
+handles.sound_scene_setup.Input_file = strcat(path,file);
+handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
+                       'SamplesPerFrame',handles.sound_scene_setup.Block_size);
 handles.sound_scene.delete(handles.gui);
-handles.sound_scene = sound_scene(handles.gui,handles.binauralizer_setup);
+handles.sound_scene = sound_scene(handles.gui,handles.sound_scene_setup);
 guidata(hObject,handles);
 
 % --- Executes on slider movement.
 function Volume_Callback(hObject, eventdata, handles)
-handles.binauralizer_setup.Volume = get(hObject,'Value');
+handles.sound_scene_setup.Volume = get(hObject,'Value');
 guidata(hObject,handles)
 
 function Volume_CreateFcn(hObject, eventdata, handles)
