@@ -29,10 +29,8 @@ classdef binaural_renderer < handle
                                      squeeze(obj.binaural_source.hrtf.Data.IR(ind,2,:))];
             obj.binaural_filter  = OLS_convolver(obj.hrtf_coefficients, length(obj.binaural_source.source_signal.time_series),'spectrum');
             obj.output_signal = signal;
-
-            theta_dir = acos(-v_vec*obj.binaural_source.orientation');
-            [~,ind2] = min((obj.source_directivity.theta - theta_dir).^2);
-            obj.binaural_filter.update_prefilter(obj.source_directivity.directivity_mx(:,ind2),'frequency_domain');
+            
+            obj.update_directivity;
         end
 
         function obj = update_hrtf(obj)
@@ -49,10 +47,10 @@ classdef binaural_renderer < handle
 
         function obj = update_directivity(obj)
             v_vec = (obj.receiver.position-obj.binaural_source.position); 
-            v_vec = v_vec/norm(v_vec);
-            theta0 = acos(v_vec*obj.binaural_source.orientation');
+            theta0 = acos(v_vec*obj.binaural_source.orientation'/norm(v_vec));
             [~,ind2] = min((obj.source_directivity.theta - theta0).^2);
             obj.binaural_filter.update_prefilter(obj.source_directivity.directivity_mx(:,ind2),'frequency_domain');
+
         end
          
         function obj = render(obj)
