@@ -13,8 +13,8 @@ classdef directivity_table < handle
             %DIRECTIVITY_TABLE Construct an instance of this class
             %   Detailed explanation goes here
             obj.type = type;
-            N = 90;
-            obj.theta = (0:N-1)/N*pi/2;
+            N = 180;
+            obj.theta = (0:N)/N*pi;
             switch type.Shape
                 case 'point_source'
                     obj.directivity_mx = ones(1,N);

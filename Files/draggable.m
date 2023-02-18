@@ -42,7 +42,7 @@ end
 % =========================================================================
 
 % Saving object's and parent figure's initial state
-getAsyncKeyState(VirtualKeyCode.VK_CONTROL);
+%getAsyncKeyState(VirtualKeyCode.VK_CONTROL);
 setappdata(h,'initial_userdata',get(h,'UserData'));
 setappdata(h,'initial_objbdfcn',get(h,'ButtonDownFcn'));
 setappdata(h,'initial_renderer',get(fgh,'Renderer'));
@@ -55,7 +55,7 @@ setappdata(h,'constraint_type',constraint);
 setappdata(h,'constraint_parameters',p);
 setappdata(h,'user_movefcn',user_movefcn);
 setappdata(h,'user_rotatefcn',user_rotatefcn);
-setappdata(h,'user_endfcn',user_endfcn);        % added by SMB
+setappdata(h,'user_endfcn',user_endfcn);
 setappdata(h,'user_renderer',user_renderer);
 
 % Setting the object's ButtonDownFcn
@@ -69,14 +69,14 @@ set(h,'ButtonDownFcn',@click_object);
 function click_object(obj,eventdata)
 % obj here is the object to be dragged and gcf is the object's parent
 % figure since the user clicked on the object
-if ~(getAsyncKeyState(VirtualKeyCode.VK_CONTROL))
+if eventdata.Button == 1
     setappdata(obj,'initial_position',get_position(obj));
     setappdata(obj,'initial_extent',compute_extent(obj));
     setappdata(obj,'initial_point',get(gca,'CurrentPoint'));
     set(gcf,'WindowButtonDownFcn',{@activate_movefcn,obj});
     set(gcf,'WindowButtonUpFcn',{@deactivate_movefcn,obj});
     activate_movefcn(gcf,eventdata,obj);
-else
+elseif eventdata.Button ~= 1
     setappdata(obj,'initial_position',get_position(obj));
     setappdata(obj,'initial_extent',compute_extent(obj));
     setappdata(obj,'initial_orientation',get_orientation(obj));
@@ -101,7 +101,6 @@ function deactivate_rotatefcn(obj,eventdata,h)
     set(obj,'WindowButtonMotionFcn',getappdata(h,'initial_wbmfcn'));
     set(obj,'WindowButtonDownFcn',getappdata(h,'initial_wbdfcn'));
     set(obj,'WindowButtonUpFcn',getappdata(h,'initial_wbufcn'));
-    getAsyncKeyState(VirtualKeyCode.VK_CONTROL);
 
 
     
@@ -112,7 +111,6 @@ function deactivate_rotatefcn(obj,eventdata,h)
 function activate_movefcn(obj,eventdata,h)
 % We were once setting up renderers here. Now we only set the movefcn
 set(obj,'WindowButtonMotionFcn',{@movefcn,h});
-getAsyncKeyState(VirtualKeyCode.VK_CONTROL);
     
 % =========================================================================
 % FUNCTION deactivate_movefcn
@@ -126,8 +124,8 @@ set(obj,'WindowButtonMotionFcn',getappdata(h,'initial_wbmfcn'));
 set(obj,'WindowButtonDownFcn',getappdata(h,'initial_wbdfcn'));
 set(obj,'WindowButtonUpFcn',getappdata(h,'initial_wbufcn'));
 % Executing the user's drag end function
-user_endfcn = getappdata(h,'user_endfcn');
-getAsyncKeyState(VirtualKeyCode.VK_CONTROL);
+user_endfcn = getappdata(h,'user_endfcn');%
+%getAsyncKeyState(VirtualKeyCode.VK_CONTROL);
 if ~isempty(user_endfcn)
     feval(user_endfcn,h);           % added by SMB, modified by FB
 end

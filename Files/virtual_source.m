@@ -22,11 +22,15 @@ classdef virtual_source < handle
             obj.source_type = source_type;
             obj.renderer_type = renderer_type;
         end
-
-        function obj = set_input(obj,input_signal)
+        
+        function obj = set_input(obj,varargin)
             %METHOD1 Summary of this method goes here
             %   Detailed explanation goes here
-            obj.source_signal.set_signal(input_signal);
+            if length(varargin) == 1
+                obj.source_signal.set_signal(varargin{1});
+            else
+                obj.source_signal.set_signal(varargin{1},varargin{2});
+            end
         end
         
     end

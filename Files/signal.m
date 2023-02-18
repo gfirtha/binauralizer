@@ -6,6 +6,7 @@ classdef signal < handle
         time_series
         spectrum
         opt_indexes
+        fs
     end
     
     methods
@@ -13,10 +14,17 @@ classdef signal < handle
             if nargin > 0
                 obj.time_series = varargin{1};
             end
+            if nargin > 1
+                obj.fs = varargin{2};
+            end
+
         end
         
-        function obj = set_signal(obj, input)
-            obj.time_series = input;
+        function obj = set_signal(obj, varargin)
+            obj.time_series = varargin{1};
+            if length(varargin)>1
+                obj.fs = varargin{2};
+            end
         end
         function obj = set_spectrum(obj, varargin)
             if nargin == 1

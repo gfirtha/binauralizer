@@ -1,2 +1,0 @@
-# binauralizer
-MATLAB binaural renderer

@@ -3,21 +3,21 @@ classdef listener_space_axes < handle
     %   Detailed explanation goes here
     
     properties
-        axes
+        main_axes
         receiver
         virtual_source_points
         binaural_source_points
     end
     
     methods
-        function obj = listener_space_axes(gui_handle)
-            obj.axes = gui_handle;
-            axes(obj.axes);
-            grid on
-            xlabel('x -> [m]')
-            ylabel('y -> [m]')
-            xlim([-2,2]);
-            ylim([-2,2]);
+        function obj = listener_space_axes(fig)
+            obj.main_axes = fig;
+            grid(fig,'on')
+            xlabel(fig, 'x -> [m]')
+            ylabel(fig, 'y -> [m]')
+            xlim(fig,[-3,3]);
+            ylim(fig,[-3,3]);
+      %      axis equal tight
         end
         
         function receiver = draw_head(obj,pos,R)
@@ -48,7 +48,7 @@ classdef listener_space_axes < handle
                 255 206 180;
                 255 206 180;
                 255 206 180]/255;
-            receiver = patch(gca, x_rec+pos(1) ,y_rec + pos(2),[0;1;1;1;1]);
+            receiver = patch(obj.main_axes, x_rec+pos(1) ,y_rec + pos(2),[0;1;1;1;1]);
             set(receiver,'FaceVertexCData',c);
             receiver.UserData = struct( 'Label', 1,...
                 'Origin', [ mean(receiver.Vertices(:,1)), mean(receiver.Vertices(:,2))  ],...
@@ -67,7 +67,7 @@ classdef listener_space_axes < handle
             
             c = [0.2 0.2 0.2;
                 0.5 0.5 0.5];
-            loudspeaker = patch(gca, x + pos(1), y + pos(2),[0;1]);
+            loudspeaker = patch(obj.main_axes, x + pos(1), y + pos(2),[0;1]);
             set(loudspeaker,'FaceVertexCData',c);
             loudspeaker.UserData = struct( 'Label', idx,...
                 'Origin', [ mean(loudspeaker.Vertices(:,1)), mean(loudspeaker.Vertices(:,2))  ],...
@@ -106,7 +106,7 @@ classdef listener_space_axes < handle
                 0 0 0;
                 0 0 0;
                 0 0 0]/255;
-            virtual_source = patch(gca, x + pos(1), y + pos(2),[1;0;0;0]);
+            virtual_source = patch(obj.main_axes, x + pos(1), y + pos(2),[1;0;0;0]);
             set(virtual_source,'FaceVertexCData',c,'FaceLighting','gouraud');
             
             virtual_source.UserData = struct( 'Label', idx,...
@@ -117,22 +117,6 @@ classdef listener_space_axes < handle
                 [pos(1),pos(2),0]);
         end
         
-        
-        function [rois,sourcePosition] = update_sources(obj,setup)
-            for n = 1 : size(setup.Default_source_position,1)
-                rois{n} = drawpoint(obj.gui_handle,...
-                    'Position',setup.Default_source_position(n,:),'Color','blue');
-                sourcePosition(n) = addlistener(rois{n} ,'MovingROI',@allevents);
-            end
-        end
-        
-        function [rois,sourcePosition] = add_sources(obj,setup,gui_handle)
-            for n = 1 : size(setup.Default_source_position,1)
-                rois{n} = drawpoint(gui_handle,...
-                    'Position',setup.Default_source_position(n,:),'Color','blue');
-                sourcePosition(n) = addlistener(rois{n} ,'MovingROI',@allevents);
-            end
-        end
     end
 end
 

@@ -29,7 +29,7 @@ classdef vbap_renderer < handle
             l = L(:,i(1:2));
             ind = i(1:2);
             g = l\obj.virtual_source.position'/norm(obj.virtual_source.position);
-            obj.G_vec(ind) = g/norm(obj.virtual_source.position);
+            obj.G_vec(ind) = g/norm(g);
             
 %            obj.G_vec(ind) = g/sum(g)*norm(obj.virtual_source.position);
         end

@@ -20,23 +20,26 @@ classdef sound_scene < handle
                     pos = get_default_layout(setup.Input_stream.info.NumChannels, 1.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
                         obj.create_binaural_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.HRTF, setup.Binaural_source_type);
-                        obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1));
+                        obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1),setup.Input_stream.SampleRate);
                     end
                 otherwise
-                    pos = get_default_layout(setup.Input_stream.info.NumChannels,  setup.renderer_setup.R + 0.5);
+                    %R0 = mean(setup.HRTF.SourcePosition(:,3));
+                    R0 = setup.renderer_setup.R;
+                    pos = get_default_layout(setup.Input_stream.info.NumChannels,  R0 + 0.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
                         obj.create_virtual_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.Virtual_source_type, setup.Rendering);
-                        obj.virtual_sources{n}.set_input(zeros(setup.Block_size,1));
+                        obj.virtual_sources{n}.set_input(zeros(setup.Block_size,1),setup.Input_stream.SampleRate);
                     end
-                    pos_ssd = get_default_layout(setup.renderer_setup.N,setup.renderer_setup.R);
+                    pos_ssd = get_default_layout(setup.renderer_setup.N,R0);
                     for n = 1 : setup.renderer_setup.N
                         obj.create_binaural_source( pos_ssd(n,:),-pos_ssd(n,:)/norm(pos_ssd(n,:)), gui, setup.HRTF, setup.Binaural_source_type);
-                        obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1));
+                        obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1),setup.Input_stream.SampleRate);
                     end
-                    gui.axes.XLim = (setup.renderer_setup.R+1)*[-1,1];
-                    gui.axes.YLim = (setup.renderer_setup.R+1)*[-1,1];
+                    gui.main_axes.XLim = (R0+1)*[-1,1];
+                    gui.main_axes.YLim = (R0+1)*[-1,1];
             end
             obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.binaural_sources,obj.receiver, setup);
+
         end
         
         function obj = create_receiver(obj, gui)
@@ -49,7 +52,7 @@ classdef sound_scene < handle
                 obj.receiver.position = gui.receiver.UserData.Origin;
                 for n = 1 : length(obj.scene_renderer.binaural_renderer)
                     obj.scene_renderer.update_binaural_renderers(n,'receiver_moved');
-                end
+                end 
             end
             function update_receiver_orientation(receiver)
                 obj.receiver.orientation = [cosd(gui.receiver.UserData.Orientation),...
@@ -79,7 +82,7 @@ classdef sound_scene < handle
                  obj.scene_renderer.update_SFS_renderers(virtual_source.UserData.Label);
             end
             function update_virtual_orientation(virtual_source)
-                sprintf('anyad')
+                sprintf('not supported')
             end
         end
         
@@ -125,6 +128,10 @@ classdef sound_scene < handle
         function obj = load_sound_scene(obj)
         end
             
+        function duplum = duplicate_scene(obj)
+            duplum = obj;
+        end
+        
         function obj = delete(obj,gui)
             obj.delete_receiver(gui);
             N = length(obj.virtual_sources);

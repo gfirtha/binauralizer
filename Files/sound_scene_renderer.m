@@ -39,8 +39,14 @@ classdef sound_scene_renderer < handle
                     switch virtual_sources{n}.renderer_type
                         case 'VBAP'
                             obj.SFS_renderer{n} = vbap_renderer(virtual_sources{n}, binaural_sources);
+                        case 'DBAP'                       
+                            obj.SFS_renderer{n} = dbap_renderer(virtual_sources{n}, binaural_sources);
                         case 'WFS'
                             obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx}, setup.renderer_setup.Antialiasing);
+                        case 'VBAP_WFS'
+                            obj.SFS_renderer{n} = vbap_wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate );
+                        case 'TD_stereo'
+                            obj.SFS_renderer{n} = time_delay_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate);
                     end
                 end
                 for n = 1 : length(binaural_sources)

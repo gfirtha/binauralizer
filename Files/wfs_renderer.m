@@ -1,4 +1,3 @@
-
 classdef wfs_renderer < handle
     
     properties
@@ -30,7 +29,7 @@ classdef wfs_renderer < handle
             end
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
-            [ obj.amp, obj.delay, obj.focused_flag, aliasing_filter ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0, obj.fs, obj.c, obj.antialiasing );
+            [ obj.amp, obj.delay, obj.focused_flag, aliasing_filter ] = get_wfs_driving_function( obj.virtual_source.position, obj.virtual_source.source_type.Shape, x0, n0, obj.fs, obj.c, obj.antialiasing );
             
             h_pre = obj.get_wfs_prefilter(obj.focused_flag);
             obj.prefilter = OLS_convolver(h_pre, length(obj.virtual_source.source_signal.time_series));
@@ -50,7 +49,7 @@ classdef wfs_renderer < handle
         function obj = update_renderer(obj)
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
-            [ obj.amp, obj.delay, focused, aliasing_filter ] = get_wfs_driving_function( obj.virtual_source.position, x0, n0, obj.fs, obj.c, obj.antialiasing );
+            [ obj.amp, obj.delay, focused, aliasing_filter ] = get_wfs_driving_function( obj.virtual_source.position, obj.virtual_source.source_type.Shape, x0, n0, obj.fs, obj.c, obj.antialiasing );
             if focused ~= obj.focused_flag
                 obj.prefilter.update_coefficients(obj.get_wfs_prefilter(focused));
                 obj.focused_flag = focused;
@@ -70,7 +69,9 @@ classdef wfs_renderer < handle
             w = [(0 : N/2 - 1)';(-N/2:-1)' ]/N*2*pi*obj.fs;
             H = sqrt(-focused*1i*w/obj.c);
             H(end/2+1) = real(H(end/2+1));
-            h = fftshift(ifft(H)).*tukeywin(N,0.1);
+            h = fftshift(ifft(H));
+            h = h(round(end/2)-50+1:round(end/2)+50).*hann(100);
+    %        h = 1;
         end
         
         function render(obj)

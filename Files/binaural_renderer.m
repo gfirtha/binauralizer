@@ -12,7 +12,7 @@ classdef binaural_renderer < handle
     properties (SetAccess = protected)
         binaural_filter
     end
-    
+        
     methods
         function obj = binaural_renderer(source, receiver, directivity)
             obj.binaural_source = source;

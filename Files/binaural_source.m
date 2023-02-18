@@ -17,12 +17,21 @@ classdef binaural_source < handle
             obj.position = position;
             obj.orientation = orientation;
             obj.source_signal = signal;
-            obj.hrtf = hrtf;
+            obj.set_hrtf(hrtf);
             obj.source_type = type;
         end
         
-        function obj = set_input(obj,input_signal)
-            obj.source_signal.set_signal(input_signal);
+        function obj = set_hrtf(obj, hrtf)
+            obj.hrtf = hrtf;
+        end
+        
+        
+        function obj = set_input(obj,varargin)
+            if length(varargin) == 1
+                obj.source_signal.set_signal(varargin{1});
+            else
+                obj.source_signal.set_signal(varargin{1},varargin{2});
+            end
         end
     end
 end
