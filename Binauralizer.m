@@ -18,16 +18,15 @@ end
 
 % --- Executes just before Binauralizer is made visible.
 function Binauralizer_OpeningFcn(hObject, eventdata, handles, varargin)
-addpath('Samples')
 addpath(genpath('Files'))
 addpath(genpath('HRTFs'))
+addpath(genpath('SoundSamples'))
 SOFAstart;
 hrtf_sofa = SOFAload(['BuK_ED_corr.sofa']);
 
 % Setup options:
 %   Rendering:              'Binaural':        Binaural rendering only
-%                           'WFS':             Wave Field Synthesis driving
-%                                              functions
+%                           'WFS':             Wave Field Synthesis 
 %                           'VBAP':            Vector-based Amplitude
 %                                              Panning
 %                           '':
@@ -104,7 +103,7 @@ release(handles.sound_scene_setup.Input_stream)
 
 % --- Executes on button press in load_file_btn.
 function load_file_btn_Callback(hObject, eventdata, handles)
-[file,path] = uigetfile('*.wav;*.mp3;*.aac;*.ac3');
+[file,path] = uigetfile('SoundSamples/*.wav;*.mp3;*.aac;*.ac3');
 if file==0
   return
 end
@@ -162,7 +161,7 @@ function load_hrtf_Callback(hObject, eventdata, handles)
 % hObject    handle to load_hrtf (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-[file,path] = uigetfile(fullfile(handles.sound_scene_setup.sofa_def_path,'*.sofa'));
+[file,path] = uigetfile(fullfile('HRTFs','*.sofa'));
 if file==0
   return
 end
