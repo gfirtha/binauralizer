@@ -6,7 +6,6 @@ switch model
         rho_P = sqrt(sum(k.^2,2));
         rho_G = sqrt(sum(x0.^2,2));
 
-    
         k_P = bsxfun(@times, k,1./rho_P);
         k_n = sum(k_P.*n0,2);
         dl = sqrt(sum((x0-circshift(x0,1)).^2,2));

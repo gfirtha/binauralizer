@@ -26,10 +26,10 @@ hrtf_sofa = SOFAload(['BuK_ED_corr.sofa']);
 
 % Setup options:
 %   Rendering:              'Binaural':        Binaural rendering only
-%                           'WFS':             Wave Field Synthesis 
+%                           'WFS':             Wave Field Synthesis
 %                           'VBAP':            Vector-based Amplitude
 %                                              Panning
-%                           '':
+%                           'CTC':             Cross-talk cancellation
 %   Binaural_source_type:   'point_source':    omnidirectional directivity,
 %                                              parameter: R (only for drawing)
 %                           'circular_piston': baffled piston directivity,
@@ -42,7 +42,7 @@ hrtf_sofa = SOFAload(['BuK_ED_corr.sofa']);
 %                           'plane_wave':      plane_,
 %                                              parameter: R radius
 
-N_ssd = 48;
+N_ssd = 64;
 dx = 2*2*pi/N_ssd;
 r0  = 2.22/pi*dx;
 if isempty(varargin)
@@ -56,10 +56,33 @@ handles.sound_scene_setup = struct(  ...
     'HRTF',                     hrtf_sofa, ...
     'sofa_def_path',            '..',...
     'Volume',                   0.5, ...
-    'Binaural_source_type',     struct('Shape','circular_piston','R',0.06),...
-    'Virtual_source_type',      struct('Shape','point_source','R',0.01),...
+    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',64),...
     'Rendering',                'WFS',...
-    'renderer_setup',           struct('R',2,'N',N_ssd,'Antialiasing','off'));
+    'Renderer_setup',           struct( 'Antialiasing','off'),...
+    'Binaural_source_type',     struct('Shape','point_source','R',0.05),...
+    'Virtual_source_type',      struct('Shape','point_source','R',0.01));
+
+
+%    'Rendering',                'CTC',...
+%   'Renderer_setup',           struct( 'Plant_model','HRTF','VS_model','HRTF', 'HRTF_database',hrtf_sofa,'N_filt',4096),...
+
+% Renderer_setup structs:
+% CTC renderer5
+%    'plant_model': 'point_source' / 'rigid_sphere' / 'HRTF'
+%    'VS_model': 'point_source' / 'rigid_sphere' / 'HRTF'
+%    'HRTF_database': sofa_hrtf
+%    'N_filt'
+% Ambisonics renderer:
+% HOA renderer:
+%
+% VBAP:
+%
+% WFS: 
+%   'R':    outdated
+%   'N':    outdated
+%   'Antialiasing':  'on'/'off'
+% TODO: arbitrary contours
+%    'Antialiasing': AA filtering, 'on'/'off'
 
 if length(varargin) ~= 0
     handles.sound_scene_setup.Rendering = 'Binaural';
@@ -88,8 +111,8 @@ while (~isDone(handles.sound_scene_setup.Input_stream))&&(~handles.stop_now)
     if handles.Bypass.Value == 1
         output = handles.sound_scene_setup.Input_stream();
     else
-    output = handles.sound_scene.binauralize_sound_scene(handles.sound_scene_setup.Volume*...
-        handles.sound_scene_setup.Input_stream());
+        output = handles.sound_scene.binauralize_sound_scene(handles.sound_scene_setup.Volume*...
+            handles.sound_scene_setup.Input_stream());
     end
     elapsed_time(i) = toc;
     deviceWriter(output);
@@ -105,7 +128,7 @@ release(handles.sound_scene_setup.Input_stream)
 function load_file_btn_Callback(hObject, eventdata, handles)
 [file,path] = uigetfile('SoundSamples/*.wav;*.mp3;*.aac;*.ac3');
 if file==0
-  return
+    return
 end
 handles.sound_scene_setup.Input_file = strcat(path,file);
 handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
@@ -163,7 +186,7 @@ function load_hrtf_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 [file,path] = uigetfile(fullfile('HRTFs','*.sofa'));
 if file==0
-  return
+    return
 end
 handles.sound_scene_setup.sofa_def_path = path;
 hrtf_sofa = SOFAload(fullfile(path,file));

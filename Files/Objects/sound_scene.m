@@ -24,14 +24,14 @@ classdef sound_scene < handle
                     end
                 otherwise
                     %R0 = mean(setup.HRTF.SourcePosition(:,3));
-                    R0 = setup.renderer_setup.R;
+                    R0 = setup.Loudspeaker_setup.R;
                     pos = get_default_layout(setup.Input_stream.info.NumChannels,  R0 + 0.5);
                     for n = 1 : setup.Input_stream.info.NumChannels
                         obj.create_virtual_source(pos(n,:),-pos(n,:)/norm(pos(n,:)), gui, setup.Virtual_source_type, setup.Rendering);
                         obj.virtual_sources{n}.set_input(zeros(setup.Block_size,1),setup.Input_stream.SampleRate);
                     end
-                    pos_ssd = get_default_layout(setup.renderer_setup.N,R0);
-                    for n = 1 : setup.renderer_setup.N
+                    pos_ssd = get_default_layout(setup.Loudspeaker_setup.N,R0);
+                    for n = 1 : setup.Loudspeaker_setup.N
                         obj.create_binaural_source( pos_ssd(n,:),-pos_ssd(n,:)/norm(pos_ssd(n,:)), gui, setup.HRTF, setup.Binaural_source_type);
                         obj.binaural_sources{n}.set_input(zeros(setup.Block_size,1),setup.Input_stream.SampleRate);
                     end
@@ -79,10 +79,10 @@ classdef sound_scene < handle
             function update_virtual_position(virtual_source)
                 obj.virtual_sources{virtual_source.UserData.Label}.position...
                     = gui.virtual_source_points{virtual_source.UserData.Label}.UserData.Origin;
-                 obj.scene_renderer.update_SFS_renderers(virtual_source.UserData.Label);
+                 obj.scene_renderer.update_SFS_renderers(virtual_source.UserData.Label,'virtual_source_moved');
             end
             function update_virtual_orientation(virtual_source)
-                sprintf('not supported')
+                obj.scene_renderer.update_SFS_renderers(virtual_source.UserData.Label,'virtual_source_rotated');
             end
         end
         

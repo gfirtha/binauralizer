@@ -8,10 +8,10 @@ classdef sound_scene_renderer < handle
         binaural_renderer
         directivity_tables
     end
-    
+
     methods
         function obj = sound_scene_renderer(virtual_sources,binaural_sources,receiver, setup)
-            
+
             % Get all required directivity characteristics
             N_fft = 2^nextpow2( min(setup.Block_size + size(setup.HRTF.Data.IR,3), 2*setup.Block_size) - 1 );
             cnt = 0;
@@ -27,7 +27,7 @@ classdef sound_scene_renderer < handle
                     obj.directivity_tables{cnt} = directivity_table(binaural_sources{m}.source_type, N_fft, setup.Input_stream.SampleRate);
                 end
             end
-            
+
             if isempty(virtual_sources) % direct binauralization scenario
                 for n = 1 : length(binaural_sources)
                     idx = get_dirtable_idx(obj.directivity_tables,binaural_sources{n});
@@ -39,14 +39,17 @@ classdef sound_scene_renderer < handle
                     switch virtual_sources{n}.renderer_type
                         case 'VBAP'
                             obj.SFS_renderer{n} = vbap_renderer(virtual_sources{n}, binaural_sources);
-                        case 'DBAP'                       
+                        case 'DBAP'
                             obj.SFS_renderer{n} = dbap_renderer(virtual_sources{n}, binaural_sources);
                         case 'WFS'
-                            obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx}, setup.renderer_setup.Antialiasing);
+                            obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate,obj.directivity_tables{idx}, setup.Renderer_setup.Antialiasing);
                         case 'VBAP_WFS'
                             obj.SFS_renderer{n} = vbap_wfs_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate );
                         case 'TD_stereo'
                             obj.SFS_renderer{n} = time_delay_renderer(virtual_sources{n}, binaural_sources, setup.Input_stream.SampleRate);
+                        case 'CTC'
+                            obj.SFS_renderer{n} = ctc_renderer(virtual_sources{n}, binaural_sources, receiver, setup.Input_stream.SampleRate, setup.Renderer_setup.Plant_model, setup.Renderer_setup.VS_model, setup.Renderer_setup.HRTF_database,setup.Renderer_setup.N_filt);
+
                     end
                 end
                 for n = 1 : length(binaural_sources)
@@ -55,11 +58,11 @@ classdef sound_scene_renderer < handle
                 end
             end
         end
-        
-        function update_SFS_renderers(obj, idx)
-            obj.SFS_renderer{idx}.update_renderer;
+
+        function update_SFS_renderers(obj, idx, type)
+            obj.SFS_renderer{idx}.update_renderer(type);
         end
-        
+
         function update_binaural_renderers(obj, idx, type)
             switch type
                 case 'receiver_moved'
@@ -74,7 +77,7 @@ classdef sound_scene_renderer < handle
                     obj.binaural_renderer{idx}.update_directivity;
             end
         end
-        
+
         function output = render(obj, input)
             %% Only binauralization job
             if (isempty(obj.SFS_renderer))
@@ -91,7 +94,7 @@ classdef sound_scene_renderer < handle
                 for m = 1 : length(obj.SFS_renderer)
                     obj.SFS_renderer{m}.virtual_source.source_signal.set_signal(input(:,m));
                     obj.SFS_renderer{m}.render;
-                    
+
                     SFS_output = SFS_output + cell2mat(cellfun( @(x) x.time_series,...
                         obj.SFS_renderer{m}.output_signal , 'UniformOutput', false));
                 end
@@ -103,7 +106,7 @@ classdef sound_scene_renderer < handle
                 end
                 output = output_signal.get_signal;
             end
-            
+
         end
     end
 end
