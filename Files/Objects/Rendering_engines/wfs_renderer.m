@@ -46,7 +46,7 @@ classdef wfs_renderer < handle
             end
         end
         
-        function obj = update_renderer(obj, type)
+        function obj = update_renderer(obj, ~)
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
             [ obj.amp, obj.delay, focused, aliasing_filter ] = get_wfs_driving_function( obj.virtual_source.position, obj.virtual_source.source_type.Shape, x0, n0, obj.fs, obj.c, obj.antialiasing );

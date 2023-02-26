@@ -136,7 +136,7 @@ classdef ctc_renderer < handle
                 lambda = 1e-5;
                 obj.inv_plant_mx_f(:,:,n) = pinv(X.'*X + lambda*eye(size(X)))*X.';
             end
-            obj.inv_plant_mx_f = 10*obj.inv_plant_mx_f / max(max(max(obj.inv_plant_mx_f)));
+            obj.inv_plant_mx_f = 200*obj.inv_plant_mx_f / max(max(max(obj.inv_plant_mx_f)));
 %             %%no regularization
 %             for n = 1 : size(plant_mx_f,3) 
 %                 X = squeeze(plant_mx_f(:,:,n));

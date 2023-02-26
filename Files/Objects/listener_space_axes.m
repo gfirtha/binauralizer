@@ -6,6 +6,7 @@ classdef listener_space_axes < handle
         main_axes
         receiver
         virtual_source_points
+        loudspeaker_points
         binaural_source_points
     end
     

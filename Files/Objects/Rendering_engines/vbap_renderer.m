@@ -19,7 +19,7 @@ classdef vbap_renderer < handle
         obj.update_renderer;
         end
         
-        function obj = update_renderer(obj)
+        function obj = update_renderer(obj, type)
             obj.G_vec = zeros(length(obj.secondary_source_distribution),1);
             L = cell2mat(cellfun( @(x) x.position', obj.secondary_source_distribution,'UniformOutput',false));
             R = cell2mat(cellfun( @(x) sqrt(sum(x.position.^2,2)), obj.secondary_source_distribution,'UniformOutput',false));

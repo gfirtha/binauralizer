@@ -4,26 +4,32 @@ classdef loudspeaker < handle
     
     properties
         source_index
-        output_signal
+        source_signal
         position
         orientation
         source_type
+        hrtf
     end
     
     methods
-        function obj = loudspeaker(idx, position, orientation, type)
+        function obj = loudspeaker(idx, position, orientation, hrtf, type)
             obj.source_index = idx;
             obj.position = position;
             obj.orientation = orientation;
-            obj.output_signal = signal;
+            obj.source_signal = signal;
             obj.source_type = type;
+            obj.set_hrtf(hrtf);
+
         end
-        
+        function obj = set_hrtf(obj, hrtf)
+            obj.hrtf = hrtf;
+        end
+
         function obj = set_output(obj,varargin)
             if length(varargin) == 1
-                obj.output_signal.set_signal(varargin{1});
+                obj.source_signal.set_signal(varargin{1});
             else
-                obj.output_signal.set_signal(varargin{1},varargin{2});
+                obj.source_signal.set_signal(varargin{1},varargin{2});
             end
         end
     end

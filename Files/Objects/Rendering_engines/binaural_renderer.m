@@ -53,6 +53,21 @@ classdef binaural_renderer < handle
 
         end
          
+        function obj = update_renderer(obj,type)
+            switch type
+                case 'receiver_moved'
+                    obj.update_hrtf;
+                    obj.update_directivity;
+                case 'receiver_rotated'
+                    obj.update_hrtf;
+                case 'loudspeaker_moved'
+                    obj.update_hrtf;
+                    obj.update_directivity;
+                case 'loudspeaker_rotated'
+                    obj.update_directivity;
+            end
+        end
+
         function obj = render(obj)
             [filter_out,ix] = obj.binaural_filter.convolve(obj.binaural_source.source_signal.time_series);
             obj.output_signal.set_spectrum(1/norm(obj.binaural_source.position-obj.receiver.position(1:2)) * filter_out, ix);

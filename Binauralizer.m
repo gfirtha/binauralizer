@@ -22,75 +22,42 @@ addpath(genpath('Files'))
 addpath(genpath('HRTFs'))
 addpath(genpath('SoundSamples'))
 SOFAstart;
-hrtf_sofa = SOFAload(['BuK_ED_corr.sofa']);
+hrtf_sofa = SOFAload('BuK_ED_corr.sofa');
 
-% Setup options:
-%   Rendering:              'Binaural':        Binaural rendering only
-%                           'WFS':             Wave Field Synthesis
-%                           'VBAP':            Vector-based Amplitude
-%                                              Panning
-%                           'CTC':             Cross-talk cancellation
-%   Binaural_source_type:   'point_source':    omnidirectional directivity,
-%                                              parameter: R (only for drawing)
-%                           'circular_piston': baffled piston directivity,
-%                                              parameter: R radius
-%                           'two_way_speaker': two baffled pistons, with
-%                                              Linkwitz-Riley crossover filter,
-%                                              parameter: [R_lp, R_hp] radii
-%   Virtual_source_type:    'point_source':    omnidirectional directivity,
-%                                              parameter: R (only for drawing)
-%                           'plane_wave':      plane_,
-%                                              parameter: R radius
+input_file = 'GitL.wav';
+block_size = 1024;
+handles.Volume = 0.5;
 
-N_ssd = 64;
-dx = 2*2*pi/N_ssd;
-r0  = 2.22/pi*dx;
-if isempty(varargin)
-    input_file = 'gitL.wav';
-else
-    input_file = varargin{1};
-end
+audiodevreset;
+handles.Input_stream = dsp.AudioFileReader(input_file,...
+    'SamplesPerFrame',block_size,'PlayCount',10);
+handles.Output_device = audioDeviceWriter;
+set(handles.Output_device,'SampleRate',handles.Input_stream.SampleRate);
+set(handles.Output_device,'BufferSize',block_size);
+
+Nch_in = handles.Input_stream.info.NumChannels;
+Nch_out = handles.Output_device.info.MaximumOutputChannels;
+fs = handles.Input_stream.SampleRate;
+
 handles.sound_scene_setup = struct(  ...
-    'Input_file',               input_file,...
-    'Block_size',               1024, ...
+    'N_in',                     Nch_in,...
+    'N_out',                    Nch_out,...
+    'SampleRate',               fs,...
+    'Block_size',               block_size, ...
     'HRTF',                     hrtf_sofa, ...
     'sofa_def_path',            '..',...
-    'Volume',                   0.5, ...
-    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',64),...
-    'Rendering',                'WFS',...
-    'Renderer_setup',           struct( 'Antialiasing','off'),...
-    'Binaural_source_type',     struct('Shape','point_source','R',0.05),...
+    'Binauralization',          false,...
+    'Downmixing_enabled',       false,...
+    'Downmixing_mode',          'nearest',... % Nearest / VBAP based (Allrad)
+    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',2),...
+    'Rendering_mode',           'WFS',...
+    'Renderer_setup',           struct('Antialiasing','off'),...
+    'Loudspeaker_type',         struct('Shape','point_source','R',0.05),...
     'Virtual_source_type',      struct('Shape','point_source','R',0.01));
 
-
-%    'Rendering',                'CTC',...
-%   'Renderer_setup',           struct( 'Plant_model','HRTF','VS_model','HRTF', 'HRTF_database',hrtf_sofa,'N_filt',4096),...
-
-% Renderer_setup structs:
-% CTC renderer5
-%    'plant_model': 'point_source' / 'rigid_sphere' / 'HRTF'
-%    'VS_model': 'point_source' / 'rigid_sphere' / 'HRTF'
-%    'HRTF_database': sofa_hrtf
-%    'N_filt'
-% Ambisonics renderer:
-% HOA renderer:
-%
-% VBAP:
-%
-% WFS: 
-%   'R':    outdated
-%   'N':    outdated
-%   'Antialiasing':  'on'/'off'
-% TODO: arbitrary contours
-%    'Antialiasing': AA filtering, 'on'/'off'
-
-if length(varargin) ~= 0
-    handles.sound_scene_setup.Rendering = 'Binaural';
-end
-handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
-    'SamplesPerFrame',handles.sound_scene_setup.Block_size,'PlayCount',10);
 handles.sound_scene_gui = listener_space_axes(handles.axes1);
 handles.sound_scene = sound_scene(handles.sound_scene_gui,handles.sound_scene_setup);
+
 handles.output = hObject;
 guidata(hObject, handles);
 
@@ -102,27 +69,16 @@ varargout{1} = handles.output;
 % --- Executes on button press in play_btn.
 function play_btn_Callback(hObject, eventdata, handles)
 handles.stop_now = 0;
-deviceWriter = audioDeviceWriter('SampleRate',handles.sound_scene_setup.Input_stream.SampleRate);
 guidata(hObject,handles);
-elapsed_time = 0;
-i = 1;
-while (~isDone(handles.sound_scene_setup.Input_stream))&&(~handles.stop_now)
-    tic
-    if handles.Bypass.Value == 1
-        output = handles.sound_scene_setup.Input_stream();
-    else
-        output = handles.sound_scene.binauralize_sound_scene(handles.sound_scene_setup.Volume*...
-            handles.sound_scene_setup.Input_stream());
-    end
-    elapsed_time(i) = toc;
-    deviceWriter(output);
+while (~isDone(handles.Input_stream))&&(~handles.stop_now)
+    output = handles.Volume*handles.sound_scene.render_sound_scene(handles.Input_stream()...
+        , handles.sound_scene_setup.Binauralization, handles.sound_scene_setup.Downmixing_enabled);
+    handles.Output_device(output);
     drawnow limitrate
     handles = guidata(hObject);
-    i = i + 1;
-    % mean(elapsed_time)
 end
-release(deviceWriter)
-release(handles.sound_scene_setup.Input_stream)
+release(handles.Output_device)
+release(handles.Input_stream)
 
 % --- Executes on button press in load_file_btn.
 function load_file_btn_Callback(hObject, eventdata, handles)
@@ -130,16 +86,19 @@ function load_file_btn_Callback(hObject, eventdata, handles)
 if file==0
     return
 end
-handles.sound_scene_setup.Input_file = strcat(path,file);
-handles.sound_scene_setup.Input_stream = dsp.AudioFileReader(handles.sound_scene_setup.Input_file,...
+handles.Input_stream = dsp.AudioFileReader(strcat(path,file),...
     'SamplesPerFrame',handles.sound_scene_setup.Block_size);
+Nch_in = handles.Input_stream.info.NumChannels;
+fs = handles.Input_stream.SampleRate;
+handles.sound_scene_setup.N_in = Nch_in;
+handles.sound_scene_setup.SampleRate = fs;
 handles.sound_scene.delete(handles.sound_scene_gui);
 handles.sound_scene = sound_scene(handles.sound_scene_gui,handles.sound_scene_setup);
 guidata(hObject,handles);
 
 % --- Executes on slider movement.
 function Volume_Callback(hObject, eventdata, handles)
-handles.sound_scene_setup.Volume = get(hObject,'Value');
+handles.Volume = get(hObject,'Value');
 guidata(hObject,handles)
 
 function Volume_CreateFcn(hObject, eventdata, handles)
@@ -198,5 +157,22 @@ guidata(hObject, handles);
 %TODO: https://www.mathworks.com/matlabcentral/answers/217751-keep-gui-functions-running-when-opening-an-uigetfile-dialog
 
 
-% --- Executes on button press in Bypass.
-function Bypass_Callback(hObject, eventdata, handles)
+% --- Executes on button press in binaural_mode.
+function binaural_mode_Callback(hObject, eventdata, handles)
+% hObject    handle to binaural_mode (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles.sound_scene_setup.Binauralization = get(hObject,'Value');
+guidata(hObject, handles);
+
+
+% --- Executes on button press in mixdown.
+function mixdown_Callback(hObject, eventdata, handles)
+% hObject    handle to mixdown (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles.sound_scene_setup.Mixdown_enabled = get(hObject,'Value');
+guidata(hObject, handles);
+
+
+% Hint: get(hObject,'Value') returns toggle state of mixdown
