@@ -1,22 +1,30 @@
-classdef base_renderer
+classdef base_renderer < handle
     %BASE_RENDERER Summary of this class goes here
     %   Detailed explanation goes here
     
     properties
-        Property1
+        virtual_source
+        secondary_source_distribution
+        output_signal
     end
-    
+    methods (Abstract)
+        update_renderer()
+        render()
+    end
     methods
-        function obj = base_renderer(inputArg1,inputArg2)
-            %BASE_RENDERER Construct an instance of this class
-            %   Detailed explanation goes here
-            obj.Property1 = inputArg1 + inputArg2;
+        function obj = base_renderer(virtual_source,SSD)
+            obj.virtual_source = virtual_source;
+            obj.secondary_source_distribution = SSD;
+            for n = 1 : length(SSD)
+                obj.output_signal{n} = signal;
+            end
         end
         
-        function outputArg = method1(obj,inputArg)
-            %METHOD1 Summary of this method goes here
-            %   Detailed explanation goes here
-            outputArg = obj.Property1 + inputArg;
+        function obj = add_output_to_ssd_signal(obj)
+            for n = 1 : length(obj.output_signal)
+                obj.secondary_source_distribution{n}.source_signal.add_signals(...
+                    obj.output_signal{n});
+            end
         end
     end
 end

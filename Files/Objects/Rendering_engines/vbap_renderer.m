@@ -1,21 +1,16 @@
-classdef vbap_renderer < handle
+classdef vbap_renderer < base_renderer
     %VBAP_RENDERER Summary of this class goes here
     %   Detailed explanation goes here
     
     properties
-        virtual_source
-        secondary_source_distribution
-        output_signal
         G_vec
     end
     
     methods
         function obj = vbap_renderer(virtual_source,SSD)
+            obj = obj@base_renderer(virtual_source,SSD);
             obj.virtual_source = virtual_source;
             obj.secondary_source_distribution = SSD;
-            for n = 1 : length(SSD)
-                obj.output_signal{n} = signal;
-            end
         obj.update_renderer;
         end
         
@@ -35,9 +30,10 @@ classdef vbap_renderer < handle
         end
 
         function render(obj)
-            for n = 1 : length(obj.output_signal)
+            for n = 1 : length(obj.secondary_source_distribution)
                 obj.output_signal{n}.set_signal( obj.G_vec(n)*obj.virtual_source.source_signal.time_series );
             end
+            obj.add_output_to_ssd_signal;
         end
     end
 end

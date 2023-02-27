@@ -10,7 +10,7 @@ classdef sound_scene_renderer < handle
     end
 
     methods
-        function obj = sound_scene_renderer(virtual_sources,loudspeaker_array,receiver, setup)
+        function obj = sound_scene_renderer(virtual_sources,loudspeaker_array,headphone, receiver, setup)
 
             % Get all required directivity characteristics
             N_fft = 2^nextpow2( min(setup.Block_size + size(setup.HRTF.Data.IR,3), 2*setup.Block_size) - 1 );
@@ -48,7 +48,7 @@ classdef sound_scene_renderer < handle
                 end
                 for n = 1 : length(loudspeaker_array)
                     idx = get_dirtable_idx(obj.directivity_tables,loudspeaker_array{n});
-                    obj.binaural_renderer{n} = binaural_renderer(loudspeaker_array{n}, receiver,obj.directivity_tables{idx});
+                    obj.binaural_renderer{n} = binaural_renderer(loudspeaker_array{n}, receiver,headphone, obj.directivity_tables{idx});
                 end
             end
         end
@@ -65,26 +65,17 @@ classdef sound_scene_renderer < handle
             end
         end
 
-        function output = render(obj, input, binaural_mode)
-            SFS_output = 0;
+        function render(obj, input, binaural_mode)
             for m = 1 : length(obj.SFS_renderer)
                 obj.SFS_renderer{m}.virtual_source.source_signal.set_signal(input(:,m));
                 obj.SFS_renderer{m}.render;
-
-                SFS_output = SFS_output + cell2mat(cellfun( @(x) x.time_series,...
-                    obj.SFS_renderer{m}.output_signal , 'UniformOutput', false));
             end
-
             if binaural_mode
-                output_signal = signal;
                 for n = 1 : length(obj.binaural_renderer)
-                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(SFS_output(:,n));
+                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(...
+                        obj.binaural_renderer{n}.binaural_source.source_signal.get_signal);
                     obj.binaural_renderer{n}.render;
-                    output_signal.add_spectra(obj.binaural_renderer{n}.output_signal);
                 end
-                output = output_signal.get_signal;
-            else
-                output = SFS_output;
             end
         end
     end

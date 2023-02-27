@@ -1,12 +1,9 @@
-classdef wfs_renderer < handle
+classdef wfs_renderer < base_renderer
     
     properties
         fs
         c
-        virtual_source
         source_directivity
-        secondary_source_distribution
-        output_signal
         focused_flag
         prefilter
         delay_line
@@ -18,12 +15,11 @@ classdef wfs_renderer < handle
     
     methods
         function obj = wfs_renderer(virtual_source,SSD, fs, directivity, antialiasing)
+            obj = obj@base_renderer(virtual_source,SSD);
             obj.antialiasing = antialiasing;
             obj.fs = fs;
             obj.c = 343.1;
             obj.source_directivity = directivity;
-            obj.virtual_source = virtual_source;
-            obj.secondary_source_distribution = SSD;
             for n = 1 : length(SSD)
                 obj.output_signal{n} = signal;
             end
@@ -88,8 +84,8 @@ classdef wfs_renderer < handle
                         obj.output_signal{n}.set_signal( obj.amp(n)*...
                             obj.delay_line.read( obj.delay(n),size(obj.virtual_source.source_signal.time_series,1) ) );
                     end
-                    
             end
+            obj.add_output_to_ssd_signal;
         end
     end
 end

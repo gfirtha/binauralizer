@@ -1,4 +1,4 @@
-classdef ctc_renderer < handle
+classdef ctc_renderer < base_renderer
     %CTC_RENDERER Summary of this class goes here
     %   Detailed explanation goes here
     %
@@ -8,10 +8,7 @@ classdef ctc_renderer < handle
     %
     %
     properties
-        virtual_source
-        secondary_source_distribution
         receiver
-        output_signal
         fs
         plant_model
         virtual_source_model    % Virtual source to receiver propagation in frequency domain
@@ -28,8 +25,7 @@ classdef ctc_renderer < handle
 
     methods
         function obj = ctc_renderer(varargin)
-            obj.virtual_source = varargin{1};
-            obj.secondary_source_distribution = varargin{2};
+            obj = obj@base_renderer(varargin{1},varargin{2});
             obj.receiver = varargin{3};
             obj.fs = varargin{4};
             for n = 1 : length(obj.secondary_source_distribution)
@@ -118,20 +114,11 @@ classdef ctc_renderer < handle
 
             end
 
-%             figure('Name',obj.plant_model)
-%             semilogx(squeeze(freq),20*log10(squeeze(abs(plant_mx_f(2,1,:)))))
-%             hold on
-%             semilogx(squeeze(freq),20*log10(squeeze(abs(plant_mx_f(2,2,:)))))
-%             grid on
-%             ylabel({'Magnitude [dB]'});
-%             xlabel({'frequency [Hz]'});
-%             xlim([200,20e3])
 
             obj.inv_plant_mx_f = zeros(size(plant_mx_f));
-%           obj.inv_plant_mx_f(:,:,squeeze(obj.fs)>20e3) = 0;
 
             %%%Tikhonov regularization
-            for n = 1 : size(plant_mx_f,3) % TIKHONOV regularization
+            for n = 1 : size(plant_mx_f,3)
                 X = squeeze(plant_mx_f(:,:,n));
                 lambda = 1e-5;
                 obj.inv_plant_mx_f(:,:,n) = pinv(X.'*X + lambda*eye(size(X)))*X.';
@@ -142,15 +129,7 @@ classdef ctc_renderer < handle
 %                 X = squeeze(plant_mx_f(:,:,n));
 %                 obj.inv_plant_mx_f(:,:,n) = pinv(X);
 %             end
-% 
-%             figure('Name','transfer function')
-%             semilogx(squeeze(freq),20*log10(squeeze(abs(obj.inv_plant_mx_f(2,1,:)))))
-%             hold on
-%             semilogx(squeeze(freq),20*log10(squeeze(abs(obj.inv_plant_mx_f(2,2,:)))))
-%             grid on
-%             ylabel({'Magnitude [dB]'});
-%             xlabel({'frequency [Hz]'});
-%             xlim([200,20e3])
+
         end
 
         function obj = update_vs_model(obj)
@@ -239,6 +218,7 @@ classdef ctc_renderer < handle
             for n = 1 : length(obj.secondary_source_distribution)
                 obj.output_signal{n}.set_signal( obj.CTC_filters{n}.convolve( obj.virtual_source.source_signal.time_series ) );
             end
+            obj.add_output_to_ssd_signal;
         end
 
     end

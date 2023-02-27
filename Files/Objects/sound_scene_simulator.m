@@ -18,7 +18,7 @@ classdef sound_scene_simulator < handle
         function obj = sound_scene_simulator(varargin)
             %SCENE_SIMULATOR Construct an instance of this class
             %   Detailed explanation goes here
-            obj.temporary_sound_scene = varargin{1};
+            obj.temporary_sound_scene = varargin{1}.duplicate_scene;
             gui = varargin{2};
             obj.excitation_type = varargin{3};
             dx = 1e-2;
@@ -35,8 +35,8 @@ classdef sound_scene_simulator < handle
             for n = 1 : length(gui.virtual_source_points)
                 copyobj(gui.virtual_source_points{n}, obj.simulation_axes);
             end
-            for n = 1 : length(gui.binaural_source_points)
-                copyobj(gui.binaural_source_points{n}, obj.simulation_axes);
+            for n = 1 : length(gui.loudspeaker_points)
+                copyobj(gui.loudspeaker_points{n}, obj.simulation_axes);
             end
             xlim(gui.main_axes.XLim)
             ylim(gui.main_axes.YLim)
@@ -44,25 +44,25 @@ classdef sound_scene_simulator < handle
             xlabel('x -> [m]');
             ylabel('y -> [m]');
             
-            input = repmat( [zeros(length(obj.temporary_sound_scene.binaural_sources{1}.source_signal.time_series),1)] ...
-                ,1 , length(obj.temporary_sound_scene.binaural_sources));
-            obj.temporary_sound_scene.scene_renderer.render(input);
+            input = repmat( [zeros(length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series),1)] ...
+                ,1 , length(obj.temporary_sound_scene.virtual_sources));
+            obj.temporary_sound_scene.render_sound_scene(input,false,false);
             
-            fs = obj.temporary_sound_scene.binaural_sources{1}.source_signal.fs;
-            N = length(obj.temporary_sound_scene.binaural_sources{1}.source_signal.time_series);
+            fs = obj.temporary_sound_scene.virtual_sources{1}.source_signal.fs;
+            N = length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series);
             obj.t = (1:N)/fs;
             switch obj.excitation_type
                 case 'harmonic'
                     obj.f0 = varargin{4};
                     input = repmat( cos(2*pi*obj.t*obj.f0)' ...
-                        ,1 , length(obj.temporary_sound_scene.binaural_sources));
-                    obj.temporary_sound_scene.scene_renderer.render(input);
+                        ,1 , length(obj.temporary_sound_scene.virtual_sources));
+                    obj.temporary_sound_scene.render_sound_scene(input,false,false);
                 case 'impulse'
                     W = varargin{4};
                     W = 5;
                     input = repmat( [hann(W);zeros(N-W,1)] ...
-                        ,1 , length(obj.temporary_sound_scene.binaural_sources));
-                    obj.temporary_sound_scene.scene_renderer.render(input);
+                        ,1 , length(obj.temporary_sound_scene.virtual_sources));
+                    obj.temporary_sound_scene.render_sound_scene(input,false,false);
             end            
         end
         
@@ -78,11 +78,11 @@ classdef sound_scene_simulator < handle
                 case 'impulse'
                     if isempty(obj.temporary_sound_scene.virtual_sources)
                         mean_d =  mean(sqrt(sum((bsxfun(@minus, obj.temporary_sound_scene.receiver.position,...
-                            (cell2mat(cellfun( @(x) x.position', obj.temporary_sound_scene.binaural_sources, 'UniformOutput', false)))')).^2,2)));
+                            (cell2mat(cellfun( @(x) x.position', obj.temporary_sound_scene.loudspeaker_array, 'UniformOutput', false)))')).^2,2)));
                         t0 = mean_d/c  + t_slider;
                     else
                         mean_a =  mean(sqrt(sum((bsxfun(@minus, obj.temporary_sound_scene.receiver.position,...
-                            (cell2mat(cellfun( @(x) x.position', obj.temporary_sound_scene.binaural_sources, 'UniformOutput', false)))')).^2,2)));
+                            (cell2mat(cellfun( @(x) x.position', obj.temporary_sound_scene.loudspeaker_array, 'UniformOutput', false)))')).^2,2)));
                         mean_b =  mean(sqrt(sum((bsxfun(@minus, obj.temporary_sound_scene.receiver.position,...
                             (cell2mat(cellfun( @(x) x.position', obj.temporary_sound_scene.virtual_sources, 'UniformOutput', false)))')).^2,2)));
                         t0 = max(mean_a,mean_b)/c + t_slider;
@@ -91,7 +91,7 @@ classdef sound_scene_simulator < handle
                     
             end
             
-            for n = 1 : length(obj.temporary_sound_scene.binaural_sources)
+            for n = 1 : length(obj.temporary_sound_scene.loudspeaker_array)
                 switch obj.temporary_sound_scene.scene_renderer.binaural_renderer{n}.binaural_source.source_type.Shape
                     case 'point_source'
                         R = sqrt( (X-obj.temporary_sound_scene.scene_renderer.binaural_renderer{n}.binaural_source.position(1)).^2 +...
@@ -103,9 +103,9 @@ classdef sound_scene_simulator < handle
                         field0(isnan(field0)) = 0;
                     otherwise
                         idx = get_dirtable_idx(obj.temporary_sound_scene.scene_renderer.directivity_tables,...
-                            obj.temporary_sound_scene.binaural_sources{n});
+                            obj.temporary_sound_scene.loudspeaker_array{n});
                         Dir0 = obj.temporary_sound_scene.scene_renderer.directivity_tables{idx}.directivity_mx;
-                        in =  fft(obj.temporary_sound_scene.binaural_sources{n}.source_signal.time_series,size(Dir0,1));
+                        in =  fft(obj.temporary_sound_scene.loudspeaker_array{n}.source_signal.time_series,size(Dir0,1));
                         Directive_signal = ifft(bsxfun( @times, Dir0, in ),[],1);
                         Directive_signal = Directive_signal(1:end/2,:);
                         theta = obj.temporary_sound_scene.scene_renderer.directivity_tables{idx}.theta;

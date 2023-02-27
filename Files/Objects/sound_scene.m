@@ -6,6 +6,7 @@ classdef sound_scene < handle
     properties
         virtual_sources % Virtual source: WFS or HOA or stereo etc source (should be a class with input signal,)
         loudspeaker_array  % SSD for SFS
+        headphone
         receiver
         environment
         scene_renderer
@@ -16,7 +17,7 @@ classdef sound_scene < handle
         function obj = sound_scene(gui, setup)
             obj.environment = environment;
             obj.create_receiver(gui);
-
+            
             R0 = setup.Loudspeaker_setup.R;
             pos = get_default_layout(setup.N_in,  R0 + 0.5);
             for n = 1 : setup.N_in
@@ -41,7 +42,8 @@ classdef sound_scene < handle
                     gui.main_axes.XLim = (R0+1)*[-1,1];
                     gui.main_axes.YLim = (R0+1)*[-1,1];
             end
-            obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.loudspeaker_array,obj.receiver, setup);
+            obj.headphone = headphone(1,obj.receiver.position);
+            obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.loudspeaker_array, obj.headphone, obj.receiver, setup);
 
             obj.downmixing_matrix = get_downmixing_mx(obj.loudspeaker_array,setup.N_out);
         end
@@ -143,12 +145,20 @@ classdef sound_scene < handle
             clear obj
         end
 
-        function output = render_sound_scene(obj,input, binaural_mode, downmixing_enabled)
-            % TODO, check output channel no. If required, dowmix output
-            if downmixing_enabled && ~binaural_mode
-                output = obj.scene_renderer.render(input, binaural_mode)*obj.downmixing_matrix';
+        function output = render_sound_scene(obj,input, setup)
+            % Initizialize loudspeaker and headphone signals with zeros
+            cellfun( @(x) x.source_signal.clear_signal, obj.loudspeaker_array);
+            obj.headphone.source_signal.clear_signal;
+
+            % Render
+            obj.scene_renderer.render(input, setup.Binauralization);
+
+            if ~setup.Downmixing_enabled && ~setup.Binauralization
+                output = cell2mat(cellfun( @(x) x.source_signal.get_signal, obj.loudspeaker_array, 'UniformOutput',false));
+            elseif setup.Downmixing_enabled && ~setup.Binauralization
+                output = cell2mat(cellfun( @(x) x.source_signal.get_signal, obj.loudspeaker_array, 'UniformOutput',false))*obj.downmixing_matrix';
             else
-                output = obj.scene_renderer.render(input, binaural_mode);
+                output = obj.headphone.source_signal.get_signal;
             end
         end
     end

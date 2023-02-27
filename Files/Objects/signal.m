@@ -1,14 +1,14 @@
 classdef signal < handle
     %SIGNAL Summary of this class goes here
     %   Detailed explanation goes here
-    
+
     properties
         time_series
         spectrum
         opt_indexes
         fs
     end
-    
+
     methods
         function obj = signal(varargin)
             if nargin > 0
@@ -19,7 +19,7 @@ classdef signal < handle
             end
 
         end
-        
+
         function obj = set_signal(obj, varargin)
             obj.time_series = varargin{1};
             if length(varargin)>1
@@ -56,17 +56,17 @@ classdef signal < handle
                 output = fft(obj.time_series);
             end
         end
-        
+
         function obj = add_signals(obj, input)
-            
+
             if isempty(obj.time_series)
                 obj.time_series = input.time_series;
             else
-                obj.time_series = obj.time_series + input.time_series;
+                obj.time_series = obj.time_series + input.get_signal;
             end
-                
+
         end
-        
+
         function obj = add_spectra(obj, input)
             if isempty(obj.opt_indexes)
                 obj.opt_indexes = input.opt_indexes;
@@ -76,6 +76,11 @@ classdef signal < handle
             else
                 obj.spectrum = obj.spectrum + input.spectrum;
             end
+        end
+
+        function obj = clear_signal(obj)
+                obj.time_series = zeros(size(obj.time_series));
+                obj.spectrum = zeros(size(obj.spectrum));
         end
     end
 end
