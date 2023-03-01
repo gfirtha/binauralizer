@@ -54,15 +54,11 @@ classdef sound_scene_renderer < handle
         end
 
         function update_SFS_renderers(obj, type)
-            for n = 1 : length(obj.SFS_renderer)
-                obj.SFS_renderer{n}.update_renderer(type);
-            end
+            cellfun( @(x) x.update_renderer(type), obj.SFS_renderer);
         end
 
         function update_binaural_renderers(obj, type)
-            for n = 1 : length(obj.binaural_renderer)
-                obj.binaural_renderer{n}.update_renderer(type);
-            end
+            cellfun( @(x) x.update_renderer(type), obj.binaural_renderer);
         end
 
         function render(obj, input, binaural_mode)
@@ -71,11 +67,7 @@ classdef sound_scene_renderer < handle
                 obj.SFS_renderer{m}.render;
             end
             if binaural_mode
-                for n = 1 : length(obj.binaural_renderer)
-                    obj.binaural_renderer{n}.binaural_source.source_signal.set_signal(...
-                        obj.binaural_renderer{n}.binaural_source.source_signal.get_signal);
-                    obj.binaural_renderer{n}.render;
-                end
+                cellfun( @(x) x.render, obj.binaural_renderer);
             end
         end
     end

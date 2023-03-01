@@ -25,7 +25,7 @@ SOFAstart;
 hrtf_sofa = SOFAload('BuK_ED_corr.sofa');
 
 input_file = 'GitL.wav';
-block_size = 1024;
+block_size = 1024*2;
 handles.Volume = 0.5;
 
 audiodevreset;
@@ -45,14 +45,12 @@ handles.sound_scene_setup = struct(  ...
     'SampleRate',               fs,...
     'Block_size',               block_size, ...
     'HRTF',                     hrtf_sofa, ...
-    'sofa_def_path',            '..',...
-    'Binauralization',          true,...
-    'Downmixing_enabled',       false,...
-    'Downmixing_mode',          'nearest',... % Nearest / VBAP based (Allrad)
-    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',2),...
-    'Rendering_mode',           'DBAP',...
+    'Binauralization',          false,...
+    'Downmixing_enabled',       true,...
+    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',200),...
+    'Rendering_mode',           'WFS',...
     'Renderer_setup',           [],...
-    'Loudspeaker_type',         struct('Shape','circular_piston','R',0.025),...
+    'Loudspeaker_type',         struct('Shape','point_source','R',0.05),...
     'Virtual_source_type',      struct('Shape','point_source','R',0.01));
 
 handles.sound_scene_setup.Renderer_setup = get_default_renderer_setup(handles.sound_scene_setup.Rendering_mode);
@@ -73,7 +71,7 @@ handles.stop_now = 0;
 guidata(hObject,handles);
 while (~isDone(handles.Input_stream))&&(~handles.stop_now)
     output = handles.Volume*handles.sound_scene.render_sound_scene(handles.Input_stream()...
-        , handles.sound_scene_setup );
+        , handles.sound_scene_setup.Binauralization, handles.sound_scene_setup.Downmixing_enabled );
     handles.Output_device(output);
     drawnow limitrate
     handles = guidata(hObject);
@@ -119,7 +117,7 @@ handles.simulator.simulate(handles.sim_t.Value);
 guidata(hObject,handles);
 
 % --- Executes on button press in impulsive_simulation.
-function impulsive_simulation_Callback(hObject, eventdata, handles)
+function impulsive_simulation_Callback(hObject, ~, handles)
 handles.simulator = [];
 handles.simulator = sound_scene_simulator(handles.sound_scene, handles.sound_scene_gui, 'impulse', 4 );
 handles.simulator.simulate(handles.sim_t.Value);
@@ -158,22 +156,10 @@ guidata(hObject, handles);
 %TODO: https://www.mathworks.com/matlabcentral/answers/217751-keep-gui-functions-running-when-opening-an-uigetfile-dialog
 
 
-% --- Executes on button press in binaural_mode.
-function binaural_mode_Callback(hObject, eventdata, handles)
-% hObject    handle to binaural_mode (see GCBO)
+% --- Executes on button press in Binauralization.
+function Binauralization_Callback(hObject, eventdata, handles)
+% hObject    handle to Binauralization (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-handles.sound_scene_setup.Binauralization = get(hObject,'Value');
+handles.sound_scene_setup.Binauralization = logical(get(hObject,'Value'));
 guidata(hObject, handles);
-
-
-% --- Executes on button press in mixdown.
-function mixdown_Callback(hObject, eventdata, handles)
-% hObject    handle to mixdown (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-handles.sound_scene_setup.Mixdown_enabled = get(hObject,'Value');
-guidata(hObject, handles);
-
-
-% Hint: get(hObject,'Value') returns toggle state of mixdown

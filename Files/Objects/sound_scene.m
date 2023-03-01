@@ -17,7 +17,7 @@ classdef sound_scene < handle
         function obj = sound_scene(gui, setup)
             obj.environment = environment;
             obj.create_receiver(gui);
-            
+
             R0 = setup.Loudspeaker_setup.R;
             pos = get_default_layout(setup.N_in,  R0 + 0.5);
             for n = 1 : setup.N_in
@@ -145,19 +145,20 @@ classdef sound_scene < handle
             clear obj
         end
 
-        function output = render_sound_scene(obj,input, setup)
+        function output = render_sound_scene(obj,input, Binauralization, Downmixing_enabled)
             % Initizialize loudspeaker and headphone signals with zeros
             cellfun( @(x) x.source_signal.clear_signal, obj.loudspeaker_array);
             obj.headphone.source_signal.clear_signal;
 
             % Render
-            obj.scene_renderer.render(input, setup.Binauralization);
-
-            if ~setup.Downmixing_enabled && ~setup.Binauralization
-                output = cell2mat(cellfun( @(x) x.source_signal.get_signal, obj.loudspeaker_array, 'UniformOutput',false));
-            elseif setup.Downmixing_enabled && ~setup.Binauralization
-                output = cell2mat(cellfun( @(x) x.source_signal.get_signal, obj.loudspeaker_array, 'UniformOutput',false))*obj.downmixing_matrix';
-            else
+            obj.scene_renderer.render(input, Binauralization);
+            if ~Binauralization
+                if ~Downmixing_enabled
+                    output = cell2mat(cellfun( @(x) x.source_signal.get_signal, obj.loudspeaker_array, 'UniformOutput',false));
+                elseif Downmixing_enabled
+                    output = cell2mat(cellfun( @(x) x.source_signal.get_signal, obj.loudspeaker_array, 'UniformOutput',false))*obj.downmixing_matrix';
+                end
+            elseif Binauralization
                 output = obj.headphone.source_signal.get_signal;
             end
         end

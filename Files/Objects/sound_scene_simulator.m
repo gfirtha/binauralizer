@@ -46,7 +46,7 @@ classdef sound_scene_simulator < handle
             
             input = repmat( [zeros(length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series),1)] ...
                 ,1 , length(obj.temporary_sound_scene.virtual_sources));
-            obj.temporary_sound_scene.render_sound_scene(input,false,false);
+            obj.temporary_sound_scene.render_sound_scene(input,false, false);
             
             fs = obj.temporary_sound_scene.virtual_sources{1}.source_signal.fs;
             N = length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series);

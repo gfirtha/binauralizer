@@ -7,6 +7,7 @@ else
     R0 = cell2mat(cellfun( @(x) sqrt(sum(x.position.^2,2)), loudspeakers,'UniformOutput',false));
     ls_in = bsxfun(@times, ls_in, 1./R0);
     fi_in = cart2pol(ls_in(1,:),ls_in(2,:));
+    
     ls_out = get_default_layout(Nout, 1)';
     fi_out = cart2pol(ls_out(1,:),ls_out(2,:));
 

@@ -1,7 +1,7 @@
 classdef listener_space_axes < handle
     %LISTENER_SPACE_AXES Summary of this class goes here
     %   Detailed explanation goes here
-    
+
     properties
         main_axes
         receiver
@@ -9,18 +9,19 @@ classdef listener_space_axes < handle
         loudspeaker_points
         binaural_source_points
     end
-    
+
     methods
         function obj = listener_space_axes(fig)
             obj.main_axes = fig;
             grid(fig,'on')
+            set ( gca, 'ButtonDownFcn', {} );
             xlabel(fig, 'x -> [m]')
             ylabel(fig, 'y -> [m]')
             xlim(fig,[-3,3]);
             ylim(fig,[-3,3]);
-      %      axis equal tight
+            %      axis equal tight
         end
-        
+
         function receiver = draw_head(obj,pos,R)
             N = 20;
             fi = (0:2*pi/N:2*pi*(1-1/N));
@@ -55,7 +56,7 @@ classdef listener_space_axes < handle
                 'Origin', [ mean(receiver.Vertices(:,1)), mean(receiver.Vertices(:,2))  ],...
                 'Orientation', 0 );
         end
-                
+
         function loudspeaker = draw_loudspeaker(obj,pos,R,orientation,idx)
             x1 = [  -1.8  -1.8  -1  -1 ]'*R;
             y1 = [   -1    1   1   -1 ]'*R;
@@ -65,7 +66,7 @@ classdef listener_space_axes < handle
             y = [y1,y2];
             x = x - mean(mean(x));
             y = y - mean(mean(y));
-            
+
             c = [0.2 0.2 0.2;
                 0.5 0.5 0.5];
             loudspeaker = patch(obj.main_axes, x + pos(1), y + pos(2),[0;1]);
@@ -76,7 +77,7 @@ classdef listener_space_axes < handle
             rotate(loudspeaker,[0 0 1], orientation,...
                 [loudspeaker.UserData.Origin(1),loudspeaker.UserData.Origin(2),0]);
         end
-        
+
         function virtual_source = draw_virtual_source(obj,pos,orientation,idx)
             N = 20;
             R = [180,40,45,50];
@@ -96,28 +97,28 @@ classdef listener_space_axes < handle
                 (A(4)-w)*cosd(linspace(R(4),-R(4),N/2))];
             y_w3 = [A(4)*sind(linspace(-R(4),R(4),N/2))...
                 (A(4)-w)*sind(linspace(R(4),-R(4),N/2))];
-            
+
             x = [x_source;x_w1;x_w2;x_w3]';
             y = [y_source;y_w1;y_w2;y_w3]';
-            
+
             x = x - mean(mean(x));
             y = y - mean(mean(y));
-            
+
             c = [255 0 0;
                 0 0 0;
                 0 0 0;
                 0 0 0]/255;
             virtual_source = patch(obj.main_axes, x + pos(1), y + pos(2),[1;0;0;0]);
             set(virtual_source,'FaceVertexCData',c,'FaceLighting','gouraud');
-            
+
             virtual_source.UserData = struct( 'Label', idx,...
                 'Origin', [ mean(virtual_source.Vertices(:,1)), mean(virtual_source.Vertices(:,2))  ],...
                 'Orientation', orientation );
-            
+
             rotate(virtual_source,[0 0 1], orientation,...
                 [pos(1),pos(2),0]);
         end
-        
+
     end
 end
 
