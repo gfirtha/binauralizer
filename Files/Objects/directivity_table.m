@@ -17,7 +17,7 @@ classdef directivity_table < handle
             obj.theta = (0:N)/N*pi;
             switch type.Shape
                 case 'point_source'
-                    obj.directivity_mx = ones(1,N);
+                    obj.directivity_mx = ones(N_fft,length(obj.theta));
                 case 'circular_piston'
                     obj.directivity_mx = get_piston_dir(fs,N_fft,obj.theta,type.R(1));
                 case 'two_way_speaker'
