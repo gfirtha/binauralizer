@@ -31,18 +31,25 @@ classdef nfc_hoa_renderer < base_renderer
             phi_ssd = cart2pol(x0(:,1),x0(:,2));
 
             R0 = mean(sqrt(sum(x0.^2,2)));
+            dR = mean(diff(unwrap(phi_ssd)))*R0;
             switch obj.virtual_source.source_type.Shape
                 case 'plane_wave'
-                    k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
-                    phi_0 = cart2pol(k0(1),k0(2));
                     A0 = 0.1;
+                    k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
+                    phi_pw = cart2pol(k0(1),k0(2));
                     D_hoa = zeros(length(obj.omega),length(obj.secondary_source_distribution));
                     for m = -obj.M:obj.M
                         Gm = getSphH( abs(m), 2, obj.omega/obj.c*R0 )./exp(-1i*obj.omega/obj.c*R0);
-                        D_hoa = D_hoa - 0.01* 2/R0*1i^(-abs(m)).*1./(1i*obj.omega/obj.c.*Gm)*exp(1i*m*(phi_0-phi_ssd))';
+                        D_hoa = D_hoa - A0*2/R0*1i^(-abs(m)).*1./(1i*obj.omega/obj.c.*Gm)*exp(1i*m*(phi_pw-phi_ssd))'*dR;
                     end
                 case 'point_source'
-
+                    k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
+                    [phi_s,rs] = cart2pol(k0(1),k0(2));
+                    D_hoa = zeros(length(obj.omega),length(obj.secondary_source_distribution));
+                    for m = -obj.M:obj.M
+                        Gm = getSphH( abs(m), 2, obj.omega/obj.c*rs )./getSphH( abs(m), 2, obj.omega/obj.c*R0 );
+                        D_hoa = D_hoa + 1/(2*pi*R0)*Gm*exp(1i*m*((phi_s-pi)-phi_ssd))'*dR;
+                    end
             end
             D_hoa(isnan(D_hoa)) = 0;
             d_hoa = ifft(D_hoa,length(obj.omega),1,'symmetric');

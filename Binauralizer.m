@@ -20,8 +20,7 @@ end
 function Binauralizer_OpeningFcn(hObject, eventdata, handles, varargin)
 install;
 hrtf_sofa = SOFAload('BuK_ED_corr.sofa');
-
-input_file = 'noise.wav';
+input_file = 'GitL.wav';
 block_size = 1024;
 handles.Volume = 0.5;
 
@@ -45,12 +44,14 @@ handles.sound_scene_setup = struct(  ...
     'Binauralization',          true,...
     'Downmixing_enabled',       true,...
     'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',64),...
-    'Rendering_mode',           'LWFS',...
+    'Rendering_mode',           'NFC_HOA',...
     'Renderer_setup',           [],...
     'Loudspeaker_type',         struct('Shape','point_source','R',0.04),...
-    'Virtual_source_type',      struct('Shape','plane_wave','R',0.01));
+    'Virtual_source_type',      struct('Shape','point_source','R',0.01));
 
-handles.sound_scene_setup.Renderer_setup = get_default_renderer_setup(handles.sound_scene_setup.Rendering_mode);
+if isempty(handles.sound_scene_setup.Renderer_setup)
+    handles.sound_scene_setup.Renderer_setup = get_default_renderer_setup(handles.sound_scene_setup.Rendering_mode);
+end
 handles.sound_scene_gui = listener_space_axes(handles.axes1);
 handles.sound_scene = sound_scene(handles.sound_scene_gui,handles.sound_scene_setup);
 
