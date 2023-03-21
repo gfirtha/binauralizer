@@ -57,7 +57,6 @@ switch antialiasing
             [Wc,W] = meshgrid(wc,w);
             transfer = 1./sqrt(1+(W./Wc).^(2*Nbut));
             AAfilt = fftshift(ifft(transfer,[],1),1).*kaiser(Naa,4);
-            AAfilt;
         else
             kt = sqrt(1-k_n.^2);
             [km,ixm] = min(kt);

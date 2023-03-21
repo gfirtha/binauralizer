@@ -31,7 +31,8 @@ classdef wfs_renderer < base_renderer
             obj.prefilter = OLS_convolver(h_pre, length(obj.virtual_source.source_signal.time_series));
 
             N_blocks = length(obj.virtual_source.source_signal.time_series);
-            N = ceil((100/obj.c*obj.fs)/N_blocks);
+            dmax = max(sqrt(sum(x0.^2,2)));
+            N = ceil((5*dmax/obj.c*obj.fs)/N_blocks);
             obj.delay_line = delay_line(N*N_blocks,N_blocks, N);
             switch obj.antialiasing
                 case 'on'
@@ -59,8 +60,35 @@ classdef wfs_renderer < base_renderer
             end
         end
 
+        function render(obj)
+            obj.delay_line.write( obj.prefilter.convolve( obj.virtual_source.source_signal.time_series) );
+            switch obj.antialiasing
+                case 'on'
+                    for n = 1 : length(obj.output_signal)
+                        obj.output_signal{n}.set_signal( obj.amp(n)*...
+                            obj.antialiasing_filters{n}.convolve( ...
+                            obj.delay_line.read( obj.delay(n),size(obj.virtual_source.source_signal.time_series,1) ) ));
+                    end
+                case 'off'
+                    for n = 1 : length(obj.output_signal)
+                        obj.output_signal{n}.set_signal( obj.amp(n)*...
+                            obj.delay_line.read( obj.delay(n),size(obj.virtual_source.source_signal.time_series,1) ) );
+                    end
+            end
+            obj.add_output_to_ssd_signal;
+        end
 
         function h = get_wfs_prefilter(obj,focused)
+            % The function calculates the common prefilter present in WFS
+            % driving function, given be sqrt(1i*k)
+            % Strategies:
+            %   - windowing: calculates prefilters directly from evaluation
+            %   the analytical formula in the frequency domain and IFFT-s
+            %   into the temporal domain applying windowing
+            %   - optimal: implements optimal FIR filter design as given by
+            %   Schultz in Sound Field Synthesis for Line Source Array 
+            %   Applications in Large-Scale Sound Reinforcement PhD thesis, 
+            %   in Section 2.5
             Nfilt = 128;
             method = 'windowing';
             switch method
@@ -83,23 +111,6 @@ classdef wfs_renderer < base_renderer
             end
         end
 
-        function render(obj)
-            obj.delay_line.write( obj.prefilter.convolve( obj.virtual_source.source_signal.time_series) );
-            switch obj.antialiasing
-                case 'on'
-                    for n = 1 : length(obj.output_signal)
-                        obj.output_signal{n}.set_signal( obj.amp(n)*...
-                            obj.antialiasing_filters{n}.convolve( ...
-                            obj.delay_line.read( obj.delay(n),size(obj.virtual_source.source_signal.time_series,1) ) ));
-                    end
-                case 'off'
-                    for n = 1 : length(obj.output_signal)
-                        obj.output_signal{n}.set_signal( obj.amp(n)*...
-                            obj.delay_line.read( obj.delay(n),size(obj.virtual_source.source_signal.time_series,1) ) );
-                    end
-            end
-            obj.add_output_to_ssd_signal;
-        end
     end
 end
 

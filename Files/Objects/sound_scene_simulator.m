@@ -59,7 +59,6 @@ classdef sound_scene_simulator < handle
                     obj.temporary_sound_scene.render_sound_scene(input,false,false);
                 case 'impulse'
                     W = varargin{4};
-                    W = 5;
                     input = repmat( [hann(W);zeros(N-W,1)] ...
                         ,1 , length(obj.temporary_sound_scene.virtual_sources));
                     obj.temporary_sound_scene.render_sound_scene(input,false,false);
@@ -155,14 +154,23 @@ classdef sound_scene_simulator < handle
                 theta = obj.temporary_sound_scene.scene_renderer.directivity_tables{idx}.theta;
                 Dir0 = fft(ifft(interp1(theta, Dir_mx.', fi0, 'linear'),length(s0)));
 
-                transfer = transfer + s0.*Dir0.';
+                fs = obj.temporary_sound_scene.virtual_sources{1}.source_signal.fs;
+                freq_vec = (0:N-1)'/N*fs;
+                c = 343.1;
+                transfer = transfer + 1/(4*pi)*s0.*exp(-1i*2*pi*freq_vec/c*R).*Dir0.'/R;
             end
             figure
             fs = obj.temporary_sound_scene.virtual_sources{1}.source_signal.fs;
             freq = (0:length(transfer)-1)/N*fs;
-            semilogx(freq,20*log10(abs(transfer)));
+            semilogx(freq,20*log10(abs(transfer)),'LineWidth',1.5);
             grid on
-            xlim([20,20e3]);
+            xlim([40,20e3]);
+            ylim([-40,0]);
+            xlabel('f [Hz]')
+            ylabel('P_{rec} [dB]')
+            title(sprintf('Synthesized field transfer at x = %d, y = %d',...
+                obj.temporary_sound_scene.receiver.position(1),...
+                obj.temporary_sound_scene.receiver.position(2)));
         end
     end
 end

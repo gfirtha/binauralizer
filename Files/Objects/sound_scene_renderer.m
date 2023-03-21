@@ -39,6 +39,10 @@ classdef sound_scene_renderer < handle
                         obj.SFS_renderer{n} = dbap_renderer(virtual_sources{n}, loudspeaker_array);
                     case 'WFS'
                         obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate,obj.directivity_tables{idx}, setup.Renderer_setup.Antialiasing);
+                    case 'LWFS'
+                        obj.SFS_renderer{n} = lwfs_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate);
+                    case 'NFC_HOA'
+                        obj.SFS_renderer{n} = nfc_hoa_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate,setup.Renderer_setup.M);
                     case 'VBAP_WFS'
                         obj.SFS_renderer{n} = vbap_wfs_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate );
                     case 'TD_stereo'
