@@ -1,23 +1,21 @@
 classdef nfc_hoa_renderer < base_renderer
 
     properties
-        fs
         c
         receiver
-        HOA_filter_bank
         omega
-        M
+        HOA_filter_bank
+        Norder
     end
 
     methods
-        function obj = nfc_hoa_renderer(virtual_source,SSD, fs, M)
+        function obj = nfc_hoa_renderer(virtual_source,SSD, fs, N)
             obj = obj@base_renderer(virtual_source,SSD);
-            obj.fs = fs;
             obj.c = 343.1;
             obj.receiver = [0, 0];
-            obj.M = M;
+            obj.Norder = N;
             N = length(obj.virtual_source.source_signal.time_series);
-            obj.omega = 2*pi*(0:N-1)'/N*obj.fs;
+            obj.omega = 2*pi*(0:N-1)'/N*fs;
 
             for n = 1 : length(SSD)
                 obj.output_signal{n} = signal;
@@ -38,7 +36,7 @@ classdef nfc_hoa_renderer < base_renderer
                     k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
                     phi_pw = cart2pol(k0(1),k0(2));
                     D_hoa = zeros(length(obj.omega),length(obj.secondary_source_distribution));
-                    for m = -obj.M:obj.M
+                    for m = -obj.Norder:obj.Norder
                         Gm = getSphH( abs(m), 2, obj.omega/obj.c*R0 )./exp(-1i*obj.omega/obj.c*R0);
                         D_hoa = D_hoa - A0*2/R0*1i^(-abs(m)).*1./(1i*obj.omega/obj.c.*Gm)*exp(1i*m*(phi_pw-phi_ssd))'*dR;
                     end
@@ -46,7 +44,7 @@ classdef nfc_hoa_renderer < base_renderer
                     k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
                     [phi_s,rs] = cart2pol(k0(1),k0(2));
                     D_hoa = zeros(length(obj.omega),length(obj.secondary_source_distribution));
-                    for m = -obj.M:obj.M
+                    for m = -obj.Norder:obj.Norder
                         Gm = getSphH( abs(m), 2, obj.omega/obj.c*rs )./getSphH( abs(m), 2, obj.omega/obj.c*R0 );
                         D_hoa = D_hoa + 1/(2*pi*R0)*Gm*exp(1i*m*((phi_s-pi)-phi_ssd))'*dR;
                     end
