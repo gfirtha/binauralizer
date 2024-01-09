@@ -1,4 +1,4 @@
-classdef environment
+classdef environment %< Singleton
     %ENVIRONMENT Summary of this class goes here
     %   Detailed explanation goes here
     

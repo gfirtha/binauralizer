@@ -1,20 +1,16 @@
-classdef time_delay_renderer < handle
+classdef time_delay_renderer < base_renderer
     
     properties
         fs
         c
-        virtual_source
-        secondary_source_distribution
         renderer_filter
-        output_signal
     end
     
     methods
         function obj = time_delay_renderer(virtual_source,SSD, fs)
+            obj = obj@base_renderer(virtual_source,SSD);
             obj.fs = fs;
             obj.c = 343.1;
-            obj.virtual_source = virtual_source;
-            obj.secondary_source_distribution = SSD;
             
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
@@ -26,7 +22,7 @@ classdef time_delay_renderer < handle
             end
         end
         
-        function obj = update_renderer(obj)
+        function obj = update_renderer(obj,~)
             x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
             n0 = cell2mat(cellfun( @(x) x.orientation, obj.secondary_source_distribution, 'UniformOutput', false)');
             delay_filters = get_td_filters( obj.virtual_source.position, x0, n0, obj.fs, obj.c );
@@ -40,6 +36,7 @@ classdef time_delay_renderer < handle
             for n = 1 : length(obj.output_signal)
                 obj.output_signal{n}.set_signal(  obj.renderer_filter{n}.convolve( obj.virtual_source.source_signal.time_series)  );
             end
+            obj.add_output_to_ssd_signal;
         end
     end
 end

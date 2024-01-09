@@ -16,11 +16,10 @@ switch model
         else
             focused = 1;
             center = [0, 0];
-            k_P0 = (xs-center)/norm(xs-center);
-            win = k_P*k_P0'.*((k_P*k_P0')>0);
-            k_s = (xs-center)/norm(xs-center);
+            vs = (xs-center)/norm(xs-center);
+            win = k_P*vs'.*((k_P*vs')>0);
             %           win1 = k_P*k_s'.*((k_P*k_s')>0);
-            win = (k_P*k_s'+1)/2;
+            win = (k_P*vs'+1)/2;
 
             dref = rho_P.*rho_G./(rho_G - rho_P);
             dref = rho_P.*rho_G./(rho_G + rho_P);
@@ -37,7 +36,7 @@ switch model
         k_n = sum(k.*n0,2);
         dl = sqrt(sum((x0-circshift(x0,1)).^2,2));
 
-        amp = 0.1*((k_n).*double(k_n>=0)).*sqrt(rho_G).*dl*sqrt(8*pi);
+        amp =1 *((k_n).*double(k_n>=0)).*sqrt(rho_G).*dl*sqrt(8*pi);
         delay = round( (x0*k') / c *fs );
         delay = delay - min(delay);
         focused = -1;

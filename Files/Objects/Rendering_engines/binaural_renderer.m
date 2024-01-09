@@ -6,45 +6,30 @@ classdef binaural_renderer < handle
         binaural_source
         receiver
         output_bus
-        hrtf_coefficients
         source_directivity
         output_signal
+        extrapolator
     end
     properties (SetAccess = protected)
         binaural_filter
     end
 
     methods
-        function obj = binaural_renderer(source, receiver, output_bus, directivity)
+        function obj = binaural_renderer(source, receiver, output_bus, directivity, extrapolator)
             obj.binaural_source = source;
             obj.receiver = receiver;
             obj.output_bus = output_bus;
             obj.source_directivity = directivity;
-            v_vec = obj.binaural_source.position-obj.receiver.position;
-            v_vec = v_vec/norm(v_vec);
+            obj.extrapolator = extrapolator;
 
-            [theta_1,~] = cart2pol(v_vec(1), v_vec(2));
-            [theta_2,~] = cart2pol(obj.receiver.orientation(1),obj.receiver.orientation(2));
-            [~,ind] = min( sum(  (bsxfun(@minus, obj.binaural_source.hrtf.SourcePosition(:,[1,2]) ...
-                ,mod([theta_1 - theta_2,0]*180/pi, 360))).^2,2  ) );
-            obj.hrtf_coefficients = [squeeze(obj.binaural_source.hrtf.Data.IR(ind,1,:)),...
-                squeeze(obj.binaural_source.hrtf.Data.IR(ind,2,:))];
-            obj.binaural_filter  = OLS_convolver(obj.hrtf_coefficients, length(obj.binaural_source.source_signal.time_series),'spectrum');
+            obj.binaural_filter  = OLS_convolver(obj.extrapolator.extrapolate_hrtf(source,receiver), ...
+                                        length(obj.binaural_source.source_signal.time_series),'spectrum');
             obj.output_signal = signal;
-
             obj.update_directivity;
         end
 
         function obj = update_hrtf(obj)
-            v_vec = obj.binaural_source.position-obj.receiver.position;
-            v_vec = v_vec/norm(v_vec);
-            [theta_1,~] = cart2pol(v_vec(1), v_vec(2));
-            [theta_2,~] = cart2pol(obj.receiver.orientation(1),obj.receiver.orientation(2));
-            [~,ind] = min( sum(  (bsxfun(@minus, obj.binaural_source.hrtf.SourcePosition(:,[1,2]) ...
-                ,mod([theta_1 - theta_2,0]*180/pi, 360))).^2,2  ) );
-            obj.hrtf_coefficients = [squeeze(obj.binaural_source.hrtf.Data.IR(ind,1,:)),...
-                squeeze(obj.binaural_source.hrtf.Data.IR(ind,2,:))];
-            obj.binaural_filter.update_coefficients(obj.hrtf_coefficients);
+             obj.binaural_filter.update_coefficients( obj.extrapolator.extrapolate_hrtf(obj.binaural_source,obj.receiver)  );
         end
 
         function obj = update_directivity(obj)

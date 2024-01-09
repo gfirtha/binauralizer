@@ -104,7 +104,7 @@ classdef ctc_renderer < base_renderer
                     sign_mx = [ones(1, size(xs,1));-ones(1, size(xs,1))];
 
                     kR = bsxfun(@times , k, Rmx );
-                    A0 = bsxfun( @times, Rmx, 1./(bsxfun(@times, k*obj.r_head^2, exp(-1i*kR) )));
+                    A0 = 0.1*bsxfun( @times, Rmx, 1./(bsxfun(@times, k*obj.r_head^2, exp(-1i*kR) )));
                     for n = 0 : Norder
                         Pn = getLegendre(n,0,sin(theta_mx));
                         plant_mx_f = plant_mx_f + (2*n+1)*A0.*getSphH( n, 2, kR ).*bsxfun( @times, sign_mx.^n.*Pn, 1./getDifSphH( n, 2, k*obj.r_head ) );

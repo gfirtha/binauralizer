@@ -19,15 +19,20 @@ end
 % --- Executes just before Binauralizer is made visible.
 function Binauralizer_OpeningFcn(hObject, eventdata, handles, varargin)
 install;
-hrtf_sofa = SOFAload('BuK_ED_corr.sofa');
+%hrtf_sofa = SOFAload('BuK_ED_corr.sofa');
+%hrtf_sofa = SOFAload('SCUT_KEMAR_radius_0.9.sofa');
+%hrtf_sofa = SOFAload('subject_003.sofa');
+hrtf_sofa = SOFAload('BEM_Gauss_45_R_2.00.sofa');
+%hrtf_sofa = SOFAload('pp1_HRIRs_measured.sofa');
 input_file = 'GitL.wav';
-block_size = 1024*2;
+block_size = 128*4;
 handles.Volume = 0.5;
 
 audiodevreset;
 handles.Input_stream = dsp.AudioFileReader(input_file,...
-    'SamplesPerFrame',block_size,'PlayCount',10);
+   'SamplesPerFrame',block_size,'PlayCount',10);
 handles.Output_device = audioDeviceWriter;
+%handles.Output_device = audioDeviceWriter('Device','marantz-AVR (HD Audio Driver for Display Audio)');
 set(handles.Output_device,'SampleRate',handles.Input_stream.SampleRate);
 set(handles.Output_device,'BufferSize',block_size);
 
@@ -42,12 +47,14 @@ handles.sound_scene_setup = struct(  ...
     'Block_size',               block_size, ...
     'HRTF',                     hrtf_sofa, ...
     'Binauralization',          true,...
-    'Downmixing_enabled',       true,...
-    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',96),...
-    'Rendering_mode',           'LWFS',...
+    'HRTF_extrapolation',       'WFS',...
+    'Downmixing_enabled',       false,...
+    'Decorrelation',            false,...
+    'Loudspeaker_setup',        struct('Shape','circular','R',2,'N',48,'Height',0),...
+    'Rendering_mode',           'Direct_playback',...
     'Renderer_setup',           [],...
-    'Loudspeaker_type',         struct('Shape','point_source','R',0.04),...
-    'Virtual_source_type',      struct('Shape','plane_wave','R',0.01));
+    'Loudspeaker_type',         struct('Shape','point_source','R',0.05),...
+    'Virtual_source_type',      struct('Shape','point_source','R',0.01));
 
 if isempty(handles.sound_scene_setup.Renderer_setup)
     handles.sound_scene_setup.Renderer_setup = get_default_renderer_setup(handles.sound_scene_setup.Rendering_mode);
@@ -70,13 +77,12 @@ handles.stop_now = 0;
 guidata(hObject,handles);
 while (~isDone(handles.Input_stream))&&(~handles.stop_now)
     output = handles.Volume*handles.sound_scene.render_sound_scene(handles.Input_stream()...
-        , handles.sound_scene_setup.Binauralization, handles.sound_scene_setup.Downmixing_enabled );
+        , handles.sound_scene_setup.Binauralization, handles.sound_scene_setup.Downmixing_enabled,  handles.sound_scene_setup.Decorrelation );
     handles.Output_device(output);
     drawnow limitrate
     handles = guidata(hObject);
 end
 release(handles.Output_device)
-mean(diff(t))
 release(handles.Input_stream)
 
 % --- Executes on button press in load_file_btn.
@@ -172,3 +178,51 @@ handles.simulator = sound_scene_simulator(handles.sound_scene, handles.sound_sce
 handles.simulator.plot_transfer;
 guidata(hObject,handles);
 
+
+% --- Executes on slider movement.
+function ICC_control_Callback(hObject, eventdata, handles)
+% hObject    handle to ICC_control (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles.sound_scene.scene_renderer.decorrelator.alpha= get(hObject,'Value');
+handles.sound_scene.scene_renderer.decorrelator.update_icc_filters;
+% Hints: get(hObject,'Value') returns position of slider
+%        get(hObject,'Min') and get(hObject,'Max') to determine range of slider
+
+
+% --- Executes during object creation, after setting all properties.
+function ICC_control_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to ICC_control (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% Hint: slider controls usually have a light gray background.
+if isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor',[.9 .9 .9]);
+end
+
+
+% --- Executes on slider movement.
+function ls_height_Callback(hObject, eventdata, handles)
+% hObject    handle to ls_height (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+height = get(hObject,'Value');
+height = (height./100).^4*30;
+for n = 1 : length(handles.sound_scene.loudspeaker_array)
+    handles.sound_scene.loudspeaker_array{n}.set_height(height);
+end
+handles.sound_scene.scene_renderer.update_binaural_renderers('loudspeaker_moved',[]);
+% Hints: get(hObject,'Value') returns position of slider
+%        get(hObject,'Min') and get(hObject,'Max') to determine range of slider
+
+
+% --- Executes during object creation, after setting all properties.
+function ls_height_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to ls_height (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: slider controls usually have a light gray background.
+if isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor',[.9 .9 .9]);
+end

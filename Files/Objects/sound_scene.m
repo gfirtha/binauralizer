@@ -8,14 +8,14 @@ classdef sound_scene < handle
         loudspeaker_array  % SSD for SFS
         headphone
         receiver
-        environment
+        env
         scene_renderer
         downmixing_matrix
     end
 
     methods
         function obj = sound_scene(gui, setup)
-            obj.environment = environment;
+            obj.env = environment;
             obj.create_receiver(gui);
 
             R0 = setup.Loudspeaker_setup.R;
@@ -29,18 +29,18 @@ classdef sound_scene < handle
                     for n = 1 : length(obj.virtual_sources)
                         obj.create_loudspeaker( obj.virtual_sources{n}.position,...
                             obj.virtual_sources{n}.orientation, ...
-                            gui, setup.HRTF, setup.Loudspeaker_type);
+                            gui, setup.Loudspeaker_type, setup.Loudspeaker_setup.Height);
                         obj.loudspeaker_array{n}.set_output(zeros(setup.Block_size,1),setup.SampleRate);
                         delete(gui.virtual_source_points{n});
                     end
                 otherwise
                     pos_ssd = get_default_layout(setup.Loudspeaker_setup.N,R0);
                     for n = 1 : setup.Loudspeaker_setup.N
-                        obj.create_loudspeaker( pos_ssd(n,:),-pos_ssd(n,:)/norm(pos_ssd(n,:)), gui, setup.HRTF, setup.Loudspeaker_type);
+                        obj.create_loudspeaker( pos_ssd(n,:),-pos_ssd(n,:)/norm(pos_ssd(n,:)), gui, setup.Loudspeaker_type, setup.Loudspeaker_setup.Height);
                         obj.loudspeaker_array{n}.set_output(zeros(setup.Block_size,1),setup.SampleRate);
                     end
-                    gui.main_axes.XLim = (R0+1)*[-1,1];
-                    gui.main_axes.YLim = (R0+1)*[-1,1];
+                    gui.main_axes.XLim = 1.2*(R0+0.5)*[-1,1];
+                    gui.main_axes.YLim = 1.2*(R0+0.5)*[-1,1];
             end
             obj.headphone = headphone(1,obj.receiver.position);
             obj.scene_renderer = sound_scene_renderer(obj.virtual_sources,obj.loudspeaker_array, obj.headphone, obj.receiver, setup);
@@ -57,12 +57,12 @@ classdef sound_scene < handle
             draggable(gui.receiver,@update_receiver_position, @update_receiver_orientation);
             function update_receiver_position(receiver)
                 obj.receiver.position = gui.receiver.UserData.Origin;
-                obj.scene_renderer.update_binaural_renderers('receiver_moved');
+                obj.scene_renderer.update_binaural_renderers('receiver_moved',[]);
             end
             function update_receiver_orientation(receiver)
                 obj.receiver.orientation = [cosd(gui.receiver.UserData.Orientation),...
                     sind(gui.receiver.UserData.Orientation)];
-                obj.scene_renderer.update_binaural_renderers('receiver_rotated' );
+                obj.scene_renderer.update_binaural_renderers('receiver_rotated',[]);
             end
 
         end
@@ -94,9 +94,9 @@ classdef sound_scene < handle
             delete(gui.virtual_source_points{virt_source_idx});
         end
 
-        function obj = create_loudspeaker(obj, position, orientation, gui, hrtf, type)
+        function obj = create_loudspeaker(obj, position, orientation, gui, type, height)
             idx = length(obj.loudspeaker_array) + 1;
-            obj.loudspeaker_array{idx} = loudspeaker(idx, position, orientation, hrtf, type);
+            obj.loudspeaker_array{idx} = loudspeaker(idx, position, orientation, type, height);
             gui.loudspeaker_points{idx} = ...
                 gui.draw_loudspeaker(position,type.R(1),cart2pol(orientation(1),orientation(2))*180/pi,idx);
 
@@ -105,14 +105,14 @@ classdef sound_scene < handle
                 obj.loudspeaker_array{loudspeaker.UserData.Label}.position...
                     = gui.loudspeaker_points{loudspeaker.UserData.Label}.UserData.Origin;
                 obj.scene_renderer.update_SFS_renderers('loudspeaker_moved');
-                obj.scene_renderer.update_binaural_renderers('loudspeaker_moved');
+                obj.scene_renderer.update_binaural_renderers('loudspeaker_moved',loudspeaker.UserData.Label);
             end
             function update_loudspeaker_orientation(loudspeaker)
                 obj.loudspeaker_array{loudspeaker.UserData.Label}.orientation...
                     = [ cosd(gui.loudspeaker_points{loudspeaker.UserData.Label}.UserData.Orientation),...
                     sind(gui.loudspeaker_points{loudspeaker.UserData.Label}.UserData.Orientation)];
                 obj.scene_renderer.update_SFS_renderers('loudspeaker_rotated');
-                obj.scene_renderer.update_binaural_renderers('loudspeaker_rotated');
+                obj.scene_renderer.update_binaural_renderers('loudspeaker_rotated',loudspeaker.UserData.Label);
             end
         end
 
@@ -145,7 +145,7 @@ classdef sound_scene < handle
             clear obj
         end
 
-        function output = render_sound_scene(obj,input, Binauralization, Downmixing_enabled)
+        function output = render_sound_scene(obj,input, Binauralization, Downmixing_enabled, Decorrelation)
             % Initizialize loudspeaker and headphone signals with zeros
             cellfun( @(x) x.source_signal.clear_signal, obj.loudspeaker_array);
             obj.headphone.source_signal.clear_signal;

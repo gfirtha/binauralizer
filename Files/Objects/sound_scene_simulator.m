@@ -25,15 +25,24 @@ classdef sound_scene_simulator < handle
             obj.x = [gui.main_axes.XLim(1):dx:gui.main_axes.XLim(2)]';
             obj.y = [gui.main_axes.YLim(1):dx:gui.main_axes.YLim(2)]';
             [X,Y] = meshgrid(obj.x,obj.y);
+            xr = [0,0];
             obj.fig = figure('units','normalized','outerposition',[0.2 0.3 0.35 0.7]);
+
+            set(obj.fig,'defaulttextinterpreter','latex')
+
             obj.simulation_axes = axes;
             obj.simulation_result  = pcolor(obj.x,obj.y,zeros(size(X)));
+            obj.simulation_axes.Position  =  [0.11,0.12,0.85,0.875]; % case 1
+           % obj.simulation_axes.Position = [0.14,0.12,0.85,0.875]; %case 2
             shading interp
-
             axis equal tight
+            ftsize = 12;  %case1
+            %ftsize = 16; %case2
             copyobj(gui.receiver, obj.simulation_axes);
             for n = 1 : length(gui.virtual_source_points)
+                if isvalid(gui.virtual_source_points{n})
                 copyobj(gui.virtual_source_points{n}, obj.simulation_axes);
+                end
             end
             for n = 1 : length(gui.loudspeaker_points)
                 copyobj(gui.loudspeaker_points{n}, obj.simulation_axes);
@@ -41,9 +50,37 @@ classdef sound_scene_simulator < handle
             xlim(gui.main_axes.XLim)
             ylim(gui.main_axes.YLim)
             caxis([-1,1])
-            xlabel('x [m]');
-            ylabel('y [m]');
+            xlabel( '$x$ [m]', 'FontSize', ftsize );
+            ylabel( '$y$ [m]', 'FontSize', ftsize );
+            set(gca,'FontName','Times New Roman');
+            allAxesInFigure = findall(obj.fig,'type','axes');
+            b = get(gca,'XTickLabel');
+            set(allAxesInFigure,'XTickLabel',b,'FontSize',ftsize);
+            set(gca,'XTickLabelMode','auto')
+            b = get(gca,'YTickLabel');
+            set(allAxesInFigure,'YTickLabel',b,'FontSize',ftsize);
+            set(gca,'YTickLabelMode','auto')
+            hold on
+            plot(xr(1),xr(2), 'k+', 'MarkerSize', 20);
 
+            source_pos = obj.temporary_sound_scene.virtual_sources{1}.position;
+            x0 = cell2mat(cellfun( @(x) x.position, obj.temporary_sound_scene.loudspeaker_array, 'UniformOutput', false)');
+            n0 = cell2mat(cellfun( @(x) x.orientation,  obj.temporary_sound_scene.loudspeaker_array, 'UniformOutput', false)');
+
+            kR = xr-x0;
+            kR = kR./sqrt(sum(kR.^2,2));
+            kP = [0 0]-source_pos;
+            kP = kP./sqrt(sum(kP.^2,2));
+            [~,ix0] = min(sum((kR-kP).^2,2));
+            k0 = kP;
+
+           % LineLength = 0.65;headWidth = 5*1.5;
+           % headLength = 5*1.5;
+           % ah = annotation('arrow','headStyle','cback2','HeadLength',headLength,'HeadWidth',headWidth,'LineWidth',1,'Color','Black','LineStyle','--');
+           % set(ah,'parent',gca);
+           % set(ah,'position',[x0(ix0,1),x0(ix0,2), LineLength*k0(1,1), LineLength*k0(1,2)]);    
+          % plot(x0(ix0,1),x0(ix0,2),'.w','MarkerSize',20)
+            
             input = repmat( [zeros(length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series),1)] ...
                 ,1 , length(obj.temporary_sound_scene.virtual_sources));
             obj.temporary_sound_scene.render_sound_scene(input,false, false);
@@ -67,13 +104,13 @@ classdef sound_scene_simulator < handle
 
         function simulate(obj, t_slider)
             c = 343.1;
-            t_slider = (t_slider-0.5)/2e1;
+            t_slider = (t_slider-0.5)/10e1;
             [X,Y] = meshgrid(obj.x,obj.y);
             field = zeros(size(X));
             switch obj.excitation_type
                 case 'harmonic'
                     t0 = obj.t(end) + t_slider;
-                    title(obj.simulation_axes , sprintf('Reproduced field with harmonic excitation at f_0 = %d Hz',obj.f0));
+                    %title(obj.simulation_axes , sprintf('Reproduced field with harmonic excitation at f_0 = %d Hz',obj.f0));
                 case 'impulse'
                     if isempty(obj.temporary_sound_scene.virtual_sources)
                         mean_d =  mean(sqrt(sum((bsxfun(@minus, obj.temporary_sound_scene.receiver.position,...
@@ -86,7 +123,7 @@ classdef sound_scene_simulator < handle
                             (cell2mat(cellfun( @(x) x.position', obj.temporary_sound_scene.virtual_sources, 'UniformOutput', false)))')).^2,2)));
                         t0 = max(mean_a,mean_b)/c + t_slider;
                     end
-                    title(obj.simulation_axes, sprintf('Reproduced field with impulse excitation at t_0 = %0.1f ms',1e3*t0));
+                    %title(obj.simulation_axes, sprintf('Reproduced field with impulse excitation at t_0 = %0.1f ms',1e3*t0));
 
             end
 
@@ -127,10 +164,11 @@ classdef sound_scene_simulator < handle
             set(obj.simulation_result,'CData',field)
             switch obj.excitation_type
                 case 'harmonic'
-                    caxis([-1,1]*abs(field(round(end/2),round(end/2)))*5)
+                    caxis([-1,1]*5*median(median(abs(field))))
                 case 'impulse'
-                    caxis([-1,1]/30)
+                    caxis([-1,1]*0.02)
             end
+           set(gcf,'PaperPositionMode','auto');
         end
 
         function plot_transfer(obj)
@@ -159,18 +197,19 @@ classdef sound_scene_simulator < handle
                 c = 343.1;
                 transfer = transfer + 1/(4*pi)*s0.*exp(-1i*2*pi*freq_vec/c*R).*Dir0.'/R;
             end
-            figure
+            fig = figure('units','normalized','outerposition',[0.2 0.3 0.35 0.4]);
             fs = obj.temporary_sound_scene.virtual_sources{1}.source_signal.fs;
             freq = (0:length(transfer)-1)/N*fs;
             semilogx(freq,20*log10(abs(transfer)),'LineWidth',1.5);
             grid on
             xlim([40,20e3]);
-            ylim([-40,0]);
+            ylim([-10,10]+mean(20*log10(abs(transfer))));
             xlabel('f [Hz]')
             ylabel('P_{rec} [dB]')
             title(sprintf('Synthesized field transfer at x = %d, y = %d',...
                 obj.temporary_sound_scene.receiver.position(1),...
                 obj.temporary_sound_scene.receiver.position(2)));
+       %     save('nara_left')
         end
     end
 end

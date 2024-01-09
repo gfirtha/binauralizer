@@ -5,8 +5,10 @@ classdef sound_scene_renderer < handle
     % and "wire" them up
     properties
         SFS_renderer
+        decorrelator
         binaural_renderer
         directivity_tables
+        HRTF_extrapolators
     end
 
     methods
@@ -41,6 +43,14 @@ classdef sound_scene_renderer < handle
                         obj.SFS_renderer{n} = wfs_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate,obj.directivity_tables{idx}, setup.Renderer_setup.Antialiasing);
                     case 'LWFS'
                         obj.SFS_renderer{n} = lwfs_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate);
+                    case 'LWFS_foc'
+                        obj.SFS_renderer{n} = lwfs_foc_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate);
+                    case 'LWFS_nara'
+                        obj.SFS_renderer{n} = lwfs_renderer_nara(virtual_sources{n}, loudspeaker_array, setup.SampleRate);
+                    case 'Nara'
+                        obj.SFS_renderer{n} = nara_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate);
+                    case 'HOA'
+                        obj.SFS_renderer{n} = hoa_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate,setup.Renderer_setup.M);
                     case 'NFC_HOA'
                         obj.SFS_renderer{n} = nfc_hoa_renderer(virtual_sources{n}, loudspeaker_array, setup.SampleRate,setup.Renderer_setup.M);
                     case 'VBAP_WFS'
@@ -50,25 +60,37 @@ classdef sound_scene_renderer < handle
                     case 'CTC'
                         obj.SFS_renderer{n} = ctc_renderer(virtual_sources{n}, loudspeaker_array, receiver, setup.SampleRate, setup.Renderer_setup.Plant_model, setup.Renderer_setup.VS_model, setup.Renderer_setup.HRTF_database,setup.Renderer_setup.N_filt);
                 end
-                for n = 1 : length(loudspeaker_array)
-                    idx = get_dirtable_idx(obj.directivity_tables,loudspeaker_array{n});
-                    obj.binaural_renderer{n} = binaural_renderer(loudspeaker_array{n}, receiver,headphone, obj.directivity_tables{idx});
-                end
             end
+            
+            obj.HRTF_extrapolators = hrtf_extrapolator(setup.HRTF,setup.HRTF_extrapolation);
+
+            for n = 1 : length(loudspeaker_array)
+                idx = get_dirtable_idx(obj.directivity_tables,loudspeaker_array{n});
+                obj.binaural_renderer{n} = binaural_renderer(loudspeaker_array{n}, receiver,headphone, obj.directivity_tables{idx},obj.HRTF_extrapolators);
+            end
+            obj.decorrelator = decorrelator(setup.Decorrelation,loudspeaker_array, 1);
+
         end
 
         function update_SFS_renderers(obj, type)
             cellfun( @(x) x.update_renderer(type), obj.SFS_renderer);
         end
 
-        function update_binaural_renderers(obj, type)
-            cellfun( @(x) x.update_renderer(type), obj.binaural_renderer);
+        function update_binaural_renderers(obj, type, N)
+            if isempty(N)
+              cellfun( @(x) x.update_renderer(type), obj.binaural_renderer);
+            else
+                obj.binaural_renderer{N}.update_renderer(type);
+            end
         end
 
         function render(obj, input, binaural_mode)
             for m = 1 : length(obj.SFS_renderer)
                 obj.SFS_renderer{m}.virtual_source.source_signal.set_signal(input(:,m));
                 obj.SFS_renderer{m}.render;
+            end
+            if obj.decorrelator.mode
+                obj.decorrelator.render;
             end
             if binaural_mode
                 cellfun( @(x) x.render, obj.binaural_renderer);
