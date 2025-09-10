@@ -1,5 +1,5 @@
 function app = run_binauralizer()
-%RUN_BINAURALIZER  Entry point for the componentized app
+%RUN_BINAURALIZER  
 addpath(genpath(fileparts(mfilename('fullpath'))));
 try
     app = audioapp.App();
