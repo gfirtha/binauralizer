@@ -208,9 +208,9 @@ classdef sound_scene_simulator < handle
             obj.plot_field(field);
             obj.updateSliderLabel();
 
-if strcmpi(obj.simulation_type,'monitor')
-    obj.startMonitorLoop();    % run at ~10 FPS
-end
+            if strcmpi(obj.simulation_type,'monitor')
+                obj.startMonitorLoop();    % run at ~10 FPS
+            end
 
         end
 

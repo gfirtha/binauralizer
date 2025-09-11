@@ -123,8 +123,8 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
                     case 'zones'
                         s.rendererSetting.WFSrenderer.showZones = val;
                         f = s.renderer_illustration;
-                        set([ f.zoneFill_1,f.zoneFill_2,f.zoneFill_3,f.zoneLine_1_a,...
-                            f.zoneLine_1_b,f.zoneLine_2_a,f.zoneLine_2_b,f.zoneLine_3_a,f.zoneLine_3_b],'Visible',val);
+                        set( f.zoneFills,'Visible',val);
+                        set( f.zoneRays,'Visible',val);
                 end
                 obj.tryDrawProps();
             catch

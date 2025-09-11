@@ -1,5 +1,9 @@
 classdef listener_space_axes < handle
-    %LISTENER_SPACE_AXES
+    %LISTENER_SPACE_AXES (optimized layering + object reuse)
+    % - Stable z-order via 3 hggroups: bg (zones), mid (amp/taper), fg (lines/labels)
+    % - Reuse graphics; no per-frame deletes/uistack
+    % - Batched dashed zone rays in a single line (NaN-separated)
+    % - Less transparency/edges; OpenGL renderer + childorder sort
 
     properties
         main_axes
@@ -20,7 +24,7 @@ classdef listener_space_axes < handle
 
         rendererSetting
         lastDrawTic = [];     % for throttling
-        minDrawDt = 1/10;     % max 10 FPS for visuals
+        minDrawDt = 1/15;     % max 10 FPS for visuals
 
         simulatorHandle
     end
@@ -44,6 +48,10 @@ classdef listener_space_axes < handle
             xlabel(obj.main_axes, 'x -> [m]');
             ylabel(obj.main_axes, 'y -> [m]');
             title('Main view')
+
+            % Fast renderer defaults
+            set(ancestor(ax,'figure'),'Renderer','opengl','GraphicsSmoothing','off');
+            set(ax,'SortMethod','childorder','Clipping','on');
 
             if numel(varargin) > 1
                 obj.room = varargin{2};
@@ -102,7 +110,6 @@ classdef listener_space_axes < handle
 
             obj.positionZoomPanel();   % initial placement
 
-
             obj.rendererSetting.WFSrenderer = struct('showRef',true,'showAmp',true,'showTaper',true,'showZones',true);
         end
 
@@ -157,15 +164,17 @@ classdef listener_space_axes < handle
                 255 206 180;
                 255 206 180]/255;
             receiver = patch(obj.main_axes, x_rec+pos(1) ,y_rec + pos(2),[0;1;1;1;1], 'Tag','Receiver');
-            set(receiver,'FaceVertexCData',c);
+            set(receiver,'FaceVertexCData',c,'FaceLighting','none');
             receiver.UserData = struct( 'Label', 1,...
                 'Origin', [ mean(receiver.Vertices(:,1)), mean(receiver.Vertices(:,2))  ],...
                 'Orientation', 0 );
             rotate(receiver, [0,0,1], asind(orientation(2)), [receiver.UserData.Origin(1),receiver.UserData.Origin(2),0]);
             receiver.UserData.Orientation = asind(orientation(2));
+            obj.receiver = receiver;
         end
 
         function update_receiver( obj, receiver_position, receiver_orientation )
+            if isempty(obj.receiver) || ~isvalid(obj.receiver), return; end
             v = [cosd(obj.receiver.UserData.Orientation), sind(obj.receiver.UserData.Orientation)];
             w = receiver_orientation(1:2);
             dfi = atan2(w(2)*v(1)-w(1)*v(2), w(1)*v(1)+w(2)*v(2));
@@ -192,7 +201,7 @@ classdef listener_space_axes < handle
             c = [0.2 0.2 0.2;
                 0.5 0.5 0.5];
             loudspeaker = patch(obj.main_axes, x + pos(1), y + pos(2),[0;1], 'Tag',sprintf('loudspeaker_%i',idx));
-            set(loudspeaker,'FaceVertexCData',c);
+            set(loudspeaker,'FaceVertexCData',c,'FaceLighting','none');
             loudspeaker.UserData = struct( 'Label', idx,...
                 'Origin', [ mean(loudspeaker.Vertices(:,1)), mean(loudspeaker.Vertices(:,2))  ],...
                 'Orientation', orientation );
@@ -225,7 +234,7 @@ classdef listener_space_axes < handle
                 0 0 0;
                 0 0 0]/255;
             virtual_source = patch(obj.main_axes, x + pos(1), y + pos(2),[1;0;0;0],'Tag',sprintf('s_%i',idx));
-            set(virtual_source,'FaceVertexCData',c,'FaceLighting','gouraud');
+            set(virtual_source,'FaceVertexCData',c,'FaceLighting','none');
 
             virtual_source.UserData = struct( 'Label', idx,...
                 'Origin', [ mean(virtual_source.Vertices(:,1)), mean(virtual_source.Vertices(:,2))  ],...
@@ -303,8 +312,6 @@ classdef listener_space_axes < handle
             end
         end
 
-
-
         function zoomAxes(obj, factor)
             ax = obj.main_axes;
             xl = xlim(ax); yl = ylim(ax);
@@ -337,20 +344,25 @@ classdef listener_space_axes < handle
         end
 
         function obj = draw_wfs_properties(obj, renderer)
-            rp = renderer.get_renderer_visuals();   % x0, n0, amp, ref_pos, isClosed
+            rp = renderer.get_renderer_visuals();   % x0, n0, amp, ref_pos, isClosed, etc.
             ax = obj.main_axes;
             hold(ax,'on');
 
+            % Ensure layer groups exist
+            L = obj.ensureLayers();
+
+            % --- Reference contour ---
             if obj.rendererSetting.WFSrenderer.showRef
                 xRef = rp.ref_pos(:,1);  yRef = rp.ref_pos(:,2);
                 if isfield(rp,'isClosed') && rp.isClosed
                     xRef = [xRef; xRef(1)]; yRef = [yRef; yRef(1)];
                 end
                 obj.renderer_illustration.wfsRefContour = ...
-                    createOrUpdateLine(ax, obj.renderer_illustration, 'wfsRefContour', xRef, yRef, ...
+                    createOrUpdateLine(obj.renderer_illustration, 'wfsRefContour', L.fg, xRef, yRef, ...
                     {'LineStyle','--','LineWidth',1.25,'Color',[0 0 0],'HitTest','off','Tag','WFSRefContour'});
             end
 
+            % --- Amplitude distribution fill (MID layer) ---
             if obj.rendererSetting.WFSrenderer.showAmp
                 a = abs(rp.amp);
                 ma = max(a(:));
@@ -370,11 +382,11 @@ classdef listener_space_axes < handle
                 end
 
                 obj.renderer_illustration.amplitudeDistribution = ...
-                    createOrUpdateFill(ax, obj.renderer_illustration, 'amplitudeDistribution', Xpoly, Ypoly, ...
-                    {'FaceColor',[1 1 1]*0.95,'FaceAlpha',0.9,'EdgeColor',[100,100,100]/255,'LineWidth',1.5,'Tag','WFSamplitudeDistribution'});
-                hold(ax,'on');
+                    createOrUpdatePatch(obj.renderer_illustration, 'amplitudeDistribution', L.mid, Xpoly, Ypoly, ...
+                    {'FaceColor',[1 1 1]*0.95,'FaceAlpha',0.90,'EdgeColor',[100,100,100]/255,'LineWidth',1.5,'Tag','WFSamplitudeDistribution'});
             end
 
+            % --- Window/taper fill (MID layer) ---
             if obj.rendererSetting.WFSrenderer.showTaper
                 a = abs(rp.win_taper);
                 ma = max(a(:));
@@ -393,47 +405,48 @@ classdef listener_space_axes < handle
                 end
 
                 obj.renderer_illustration.windowFunction = ...
-                    createOrUpdateFill(ax, obj.renderer_illustration, 'windowFunction', Xpoly2, Ypoly2, ...
-                    {'FaceColor',[245,154,159]/255 ,'FaceAlpha',0.5,'EdgeColor',[209,151,137]/255,'LineWidth',1.5,'Tag','WFSwindowFunction'});
-                uistack(obj.renderer_illustration.windowFunction ,'bottom');
-                uistack(obj.renderer_illustration.amplitudeDistribution,'bottom');
+                    createOrUpdatePatch(obj.renderer_illustration, 'windowFunction', L.mid, Xpoly2, Ypoly2, ...
+                    {'FaceColor',[245,154,159]/255 ,'FaceAlpha',0.50,'EdgeColor',[209,151,137]/255,'LineWidth',1.5,'Tag','WFSwindowFunction'});
             end
 
+            % --- Zones (BG layer) ---
             if obj.rendererSetting.WFSrenderer.showZones
                 obj.draw_wfs_zones(rp, renderer);
+            else
+                % hide if present
+                if isfield(obj.renderer_illustration,'zoneFills')
+                    for kk = 1:obj.renderer_illustration.zoneFillsN
+                        if isgraphics(obj.renderer_illustration.zoneFills(kk))
+                            set(obj.renderer_illustration.zoneFills(kk),'Visible','off');
+                        end
+                    end
+                end
+                if isfield(obj.renderer_illustration,'zoneRays') && isgraphics(obj.renderer_illustration.zoneRays)
+                    set(obj.renderer_illustration.zoneRays,'XData',NaN,'YData',NaN);
+                end
             end
-
 
             if isprop(obj,'simulatorHandle') && ~isempty(obj.simulatorHandle) && isvalid(obj.simulatorHandle)
                 obj.simulatorHandle.refreshRendererCopies();
             end
 
-            % ---- helpers (nested) ----
-            function boundary = getSSDZone(zones, x0)
-                if zones(1)>zones(2)
-                    boundary = [x0(zones(1):end,:);x0(1:zones(2),:)];
-                else
-                    boundary = x0(zones(1):zones(2),:);
-                end
-            end
-
-            function h = createOrUpdateLine(axh, store, field, x, y, props)
+            % ---- nested creators (parent-aware, reuse) ----
+            function h = createOrUpdateLine(store, field, parent, x, y, props)
                 if ~isfield(store,field) || ~isvalid(store.(field))
-                    h = plot(axh, x, y, props{:});
+                    h = line('Parent',parent,'XData',x,'YData',y,props{:});
                     obj.renderer_illustration.(field) = h;
                 else
                     h = store.(field);
-                    set(h, 'XData', x, 'YData', y, 'Visible','on');
+                    set(h, 'Parent',parent, 'XData', x, 'YData', y, 'Visible','on');
                 end
             end
-
-            function h = createOrUpdateFill(axh, store, field, x, y, props)
+            function h = createOrUpdatePatch(store, field, parent, x, y, props)
                 if ~isfield(store,field) || ~isvalid(store.(field))
-                    h = fill(axh, x, y, 1, props{:});    % '1' is dummy C-data
+                    h = patch('Parent', parent, 'XData', x, 'YData', y, 'CData', 1, props{:});
                     obj.renderer_illustration.(field) = h;
                 else
                     h = store.(field);
-                    set(h, 'XData', x, 'YData', y, 'Visible','on');
+                    set(h, 'Parent',parent, 'XData', x, 'YData', y, 'Visible','on');
                 end
             end
         end
@@ -474,13 +487,24 @@ classdef listener_space_axes < handle
             if ~isempty(obj.renderer_illustration)
                 fns = fieldnames(obj.renderer_illustration);
                 for k = 1:numel(fns)
+                    if strcmp(fns{k},'layers'), continue; end % keep layer groups alive
                     h = obj.renderer_illustration.(fns{k});
-                    if isgraphics(h) && isvalid(h)
-                        delete(h);
+                    if isgraphics(h)
+                        try
+                            if isvalid(h), delete(h); end
+                        catch
+                        end
+                    elseif isa(h,'matlab.graphics.primitive.Patch')
+                        try, delete(h); catch, end
                     end
                 end
+                % remove non-layer fields
+                keepLayers = struct();
+                if isfield(obj.renderer_illustration,'layers')
+                    keepLayers.layers = obj.renderer_illustration.layers;
+                end
+                obj.renderer_illustration = keepLayers;
             end
-            obj.renderer_illustration = struct();
         end
 
         function onParentResized(obj, prevFcn, src, evt)
@@ -508,151 +532,157 @@ classdef listener_space_axes < handle
         end
 
         function draw_wfs_zones(obj, rp, renderer)
-            % Generic zone drawer for WFS.
-            % Uses rp.zone(k).boundaries = [i1 i2], rp.zone(k).type = 'tapered'|'illuminated'.
-            % Falls back to rp.zones (4 indices) if rp.zone is absent.
+            % Optimized zone drawer:
+            % - Preallocates/keeps a pool of patch handles for zone fills (BG layer)
+            % - Uses ONE line object for all dashed boundary rays (FG layer)
+            % - No per-frame deletes/uistack calls
 
             ax = obj.main_axes;
+            L  = obj.ensureLayers();
 
-            % --- colors for zone types (two yellows) ---
-            col.tapered = [236 227 128]/255;  % deeper yellow
-            col.illuminated     = [255 248 174]/255;  % lighter yellow
+            % ---- one-time setup (or reuse) ----
+            if ~isfield(obj.renderer_illustration,'zonesInit') || isempty(obj.renderer_illustration.zonesInit)
+                % Group for fills (kept at bottom)
+                obj.renderer_illustration.zonesGroup = hggroup('Parent',L.bg, ...
+                    'HitTest','off','PickableParts','none','Tag','ZonesGroup');
 
-            % --- purge previous zone graphics (fields starting with these prefixes) ---
-            wipeFields({'zoneFill_', 'zoneLine_'});
+                % Preallocate a small pool; will grow if needed
+                obj.renderer_illustration.zoneFills = gobjects(0);
+                obj.renderer_illustration.zoneFillsN = 0;
 
-            % --- build a normalized zone list (from rp.zone or from rp.zones) ---
+                % One dashed line to hold ALL boundary rays
+                obj.renderer_illustration.zoneRays = line('Parent',L.fg, ...
+                    'XData',NaN,'YData',NaN,'LineStyle','--','Color',[0 0 0], ...
+                    'LineWidth',0.75,'HitTest','off','Tag','ZonesRays');
+
+                obj.renderer_illustration.zonesInit = true;
+            end
+
+            % ---- normalize zones ----
             zones = normalizeZones(rp);
+            if isempty(zones)
+                hideAllFills();
+                set(obj.renderer_illustration.zoneRays,'XData',NaN,'YData',NaN);
+                return;
+            end
 
-            if isempty(zones), return; end
+            % ---- ensure we have enough preallocated fills ----
+            need = numel(zones);
+            have = obj.renderer_illustration.zoneFillsN;
+            if need > have
+                growBy = max(3, need - have);
+                newF = gobjects(growBy,1);
+                for i = 1:growBy
+                    newF(i) = patch('Parent', obj.renderer_illustration.zonesGroup, ...
+                        'XData',NaN,'YData',NaN,'CData',1, ...
+                        'FaceColor',[0.9 0.9 0.9],'FaceAlpha',0.50, ...
+                        'EdgeColor','none','HitTest','off', ...
+                        'Tag', sprintf('zoneFill_%d', have+i));
+                end
+                if have == 0
+                    obj.renderer_illustration.zoneFills = newF;
+                else
+                    obj.renderer_illustration.zoneFills = [obj.renderer_illustration.zoneFills; newF];
+                end
+                obj.renderer_illustration.zoneFillsN = have + growBy;
+            end
 
-            % --- pick a ray length based on current view ---
-            % long enough to be visible but not insane
+            % ---- geometry constants ----
             xl = xlim(ax); yl = ylim(ax);
-            L  = 50*max(diff(xl), diff(yl));
+            rayLen  = 50 * max(diff(xl), diff(yl));   % long-enough rays
 
-            % What kind of boundary ray?
-            srcType = lower(renderer.virtual_source.source_type.Shape);  % 'point_source' | 'plane_wave'
+            srcType = lower(renderer.virtual_source.source_type.Shape);  % 'point_source'|'plane_wave'
             F       = rp.F;
 
-            % Draw order: fills first (send to bottom), then lines
+            % ---- build data for fills and rays (batched) ----
+            raysX = []; raysY = [];
+
             for k = 1:numel(zones)
                 z = zones(k);
-                if isempty(z.boundaries) || numel(z.boundaries) ~= 2, continue; end
+                if isempty(z.boundaries) || numel(z.boundaries)~=2, continue; end
                 i1 = z.boundaries(1); i2 = z.boundaries(2);
-                if ~isfinite(i1) || ~isfinite(i2) || i1<1 || i2<1 || i1>size(rp.x0,1) || i2>size(rp.x0,1)
+                if any(~isfinite([i1 i2])) || i1<1 || i2<1 || i1>size(rp.x0,1) || i2>size(rp.x0,1)
                     continue;
                 end
 
-                % Segment of the SSD between i1 -> i2 (wrap if closed)
-                seg = betweenIndices(i1, i2, size(rp.x0,1), rp.isClosed);
-                if isempty(seg), seg = i1; end     % degenerate still allowed
+                seg = betweenIndices(i1, i2, size(rp.x0,1), isfield(rp,'isClosed') && rp.isClosed);
+                if isempty(seg), seg = i1; end
 
-                % Boundary rays
-                [xb1,yb1] = boundaryRay(i1, srcType, F, L, rp, renderer);
-                [xb2,yb2] = boundaryRay(i2, srcType, F, L, rp, renderer);
+                % boundary rays (two per zone)
+                [xb1,yb1] = boundaryRay(i1, srcType, F, rayLen, rp, renderer);
+                [xb2,yb2] = boundaryRay(i2, srcType, F, rayLen, rp, renderer);
 
-                % Zone polygon (depends on configuration)
-                [Xp, Yp] = zonePolygon(seg, i1, i2, srcType, F, L, rp, renderer);
+                raysX = [raysX, xb1, NaN, xb2, NaN]; %#ok<AGROW>
+                raysY = [raysY, yb1, NaN, yb2, NaN]; %#ok<AGROW>
 
-                % Skip degenerate polygons (need 3 distinct points)
-                if numel(Xp) >= 3 && any(isfinite(Xp)) && any(isfinite(Yp))
-                    fName = sprintf('zoneFill_%d', k);
-                    createOrUpdateFill(ax, fName, Xp, Yp, { ...
-                        'FaceColor', getColor(z.type), 'FaceAlpha', 0.50, ...
-                        'EdgeColor', 'none', 'Tag', fName});
-                    uistack(obj.renderer_illustration.(fName), 'bottom');
-                end
+                % zone polygon
+                [Xp,Yp] = zonePolygon(seg, i1, i2, srcType, F, rayLen, rp, renderer);
 
-                % Always draw boundary dashed rays
-                l1 = sprintf('zoneLine_%d_a', k);
-                createOrUpdateLine(ax, l1, xb1, yb1, {'LineStyle','--','Color',[0 0 0], 'LineWidth',0.75, 'HitTest','off','Tag',l1});
-
-                l2 = sprintf('zoneLine_%d_b', k);
-                createOrUpdateLine(ax, l2, xb2, yb2, {'LineStyle','--','Color',[0 0 0], 'LineWidth',0.75, 'HitTest','off','Tag',l2});
+                % update k-th fill
+                h = obj.renderer_illustration.zoneFills(k);
+                set(h, 'XData', Xp, 'YData', Yp, ...
+                    'FaceColor', getColor(z.type), 'FaceAlpha', 0.50, 'Visible','on');
             end
 
-            % =================== nested helpers ===================
+            % hide unused fills in the pool
+            for k = (numel(zones)+1) : obj.renderer_illustration.zoneFillsN
+                set(obj.renderer_illustration.zoneFills(k),'Visible','off');
+            end
 
-            function wipeFields(prefixes)
-                if isempty(obj.renderer_illustration), return; end
-                fns = fieldnames(obj.renderer_illustration);
-                for i = 1:numel(fns)
-                    fn = fns{i};
-                    if any(startsWith(fn, prefixes))
-                        h = obj.renderer_illustration.(fn);
-                        if ishghandle(h) && isvalid(h), delete(h); end
-                        obj.renderer_illustration = rmfield(obj.renderer_illustration, fn);
+            % one shot update for all rays
+            set(obj.renderer_illustration.zoneRays,'XData',raysX,'YData',raysY);
+
+            % =================== nested helpers ===================
+            function hideAllFills()
+                for kk = 1:obj.renderer_illustration.zoneFillsN
+                    if isgraphics(obj.renderer_illustration.zoneFills(kk))
+                        set(obj.renderer_illustration.zoneFills(kk),'Visible','off');
                     end
                 end
             end
-
             function zonesOut = normalizeZones(rpIn)
-                if isfield(rpIn,'zone') && ~isempty(rpIn.zone)
-                    zonesOut = rpIn.zone; return;
-                end
-                % Back-compat: rp.zones had 4 boundary indices [z1 z2 z3 z4]
-                if isfield(rpIn,'zones') && numel(rpIn.zones) == 4
+                if isfield(rpIn,'zone') && ~isempty(rpIn.zone), zonesOut = rpIn.zone; return; end
+                if isfield(rpIn,'zones') && numel(rpIn.zones)==4
                     z = rpIn.zones(:).';
                     zonesOut = struct( ...
-                        'boundaries', { [z(1) z(2)], [z(2) z(3)], [z(3) z(4)] }, ...
-                        'type',       { 'tapered',   'illuminated', 'tapered' } );
+                        'boundaries',{[z(1) z(2)] , [z(2) z(3)] , [z(3) z(4)]}, ...
+                        'type',     {'tapered'     , 'illuminated' , 'tapered'   });
                 else
                     zonesOut = [];
                 end
             end
-
-            function c = getColor(kind)
-                switch lower(kind)
-                    case 'illuminated', c = col.illuminated;
-                    case 'tapered',     c = col.tapered;
-                    otherwise,          c = [0.9 0.9 0.9];
-                end
-            end
-
-            function idx = betweenIndices(iStart, iEnd, N, isClosed)
+            function idx = betweenIndices(iStart,iEnd,N,isClosed)
                 if isClosed
-                    if iEnd >= iStart
-                        idx = iStart:iEnd;
-                    else
-                        idx = [iStart:N, 1:iEnd];
-                    end
+                    if iEnd >= iStart, idx = iStart:iEnd; else, idx = [iStart:N, 1:iEnd]; end
                 else
-                    % open: enforce ascending order
                     if iStart > iEnd, [iStart,iEnd] = deal(iEnd,iStart); end
                     idx = iStart:iEnd;
                 end
                 idx = unique(idx(:).','stable');
             end
-
             function [x,y] = boundaryRay(ii, srcType, Fval, len, rpIn, rend)
                 dir = rpIn.kh(ii,:);   % unit
                 switch srcType
                     case 'plane_wave'
                         x0i = rpIn.x0(ii,1); y0i = rpIn.x0(ii,2);
-                        x   = x0i + [-len len]*dir(1);
-                        y   = y0i + [-len len]*dir(2);
+                        x = x0i + [-len len]*dir(1);
+                        y = y0i + [-len len]*dir(2);
                     case 'point_source'
                         vs = rend.virtual_source.position;
                         if Fval == 1
-                            % radiating: ray from VS along +kh(ii)
                             x = [vs(1), vs(1) + len*dir(1)];
                             y = [vs(2), vs(2) + len*dir(2)];
                         else
-                            % focused: ray from SSD point along -kh(ii)
                             x0i = rpIn.x0(ii,1); y0i = rpIn.x0(ii,2);
                             x = [x0i, x0i - len*dir(1)];
                             y = [y0i, y0i - len*dir(2)];
                         end
                 end
             end
-
-            function [Xp,Yp] = zonePolygon(segIdx, i1, i2, srcType, Fval, len, rpIn, rend)
-                % Returns polygon vertices for the zone (column vectors).
+            function [Xp,Yp] = zonePolygon(segIdx,i1,i2,srcType,Fval,len,rpIn,rend)
                 dir1 = rpIn.kh(i1,:); dir2 = rpIn.kh(i2,:);
                 switch srcType
                     case 'plane_wave'
-                        % Trapezoid-ish: SSD segment + two forward rays from boundary points
                         x0seg = rpIn.x0(segIdx,1); y0seg = rpIn.x0(segIdx,2);
                         p1 = rpIn.x0(i1,:) + len*dir1;
                         p2 = rpIn.x0(i2,:) + len*dir2;
@@ -661,15 +691,13 @@ classdef listener_space_axes < handle
                     case 'point_source'
                         vs = rend.virtual_source.position(:).';
                         if Fval == 1
-                            % Radiating: SSD segment + two rays starting at VS
-                            p1 = vs + len*dir1;  % vs + L*kh(i1)
+                            p1 = vs + len*dir1;
                             p2 = vs + len*dir2;
                             x0seg = rpIn.x0(segIdx,1); y0seg = rpIn.x0(segIdx,2);
                             Xp = [x0seg; p2(1); p1(1)];
                             Yp = [y0seg; p2(2); p1(2)];
                         else
-                            % Focused: triangle with apex at VS and two "backward" SSD rays
-                            p1 = rpIn.x0(i1,:) - len*dir1;   % x0(i1) - L*kh(i1)
+                            p1 = rpIn.x0(i1,:) - len*dir1;
                             p2 = rpIn.x0(i2,:) - len*dir2;
                             Xp = [vs(1); p2(1); p1(1)];
                             Yp = [vs(2); p2(2); p1(2)];
@@ -677,25 +705,37 @@ classdef listener_space_axes < handle
                 end
                 Xp = Xp(:); Yp = Yp(:);
             end
-
-            function h = createOrUpdateLine(axh, field, x, y, props)
-                if ~isfield(obj.renderer_illustration,field) || ~isvalid(obj.renderer_illustration.(field))
-                    h = plot(axh, x, y, props{:});
-                    obj.renderer_illustration.(field) = h;
-                else
-                    h = obj.renderer_illustration.(field);
-                    set(h, 'XData', x, 'YData', y, 'Visible','on');
+            function c = getColor(kind)
+                switch lower(kind)
+                    case 'illuminated', c = [255 248 174]/255;
+                    case 'tapered',     c = [236 227 128]/255;
+                    otherwise,          c = [0.9 0.9 0.9];
                 end
             end
+        end
 
-            function h = createOrUpdateFill(axh, field, x, y, props)
-                if ~isfield(obj.renderer_illustration,field) || ~isvalid(obj.renderer_illustration.(field))
-                    h = fill(axh, x, y, 1, props{:}); % 1 = dummy CData
-                    obj.renderer_illustration.(field) = h;
-                else
-                    h = obj.renderer_illustration.(field);
-                    set(h, 'XData', x, 'YData', y, 'Visible','on');
+        function L = ensureLayers(obj)
+            % Create (or reuse) 3 groups with stable stacking:
+            % bg (zones) < mid (amp/taper) < fg (lines/labels)
+            if ~isfield(obj.renderer_illustration,'layers') || ...
+               ~all(isfield(obj.renderer_illustration.layers,{'bg','mid','fg'})) || ...
+               ~all(isgraphics(struct2array(obj.renderer_illustration.layers)))
+
+                ax = obj.main_axes;
+                L.bg  = hggroup('Parent',ax,'Tag','layer-bg','HitTest','off','PickableParts','none');
+                L.mid = hggroup('Parent',ax,'Tag','layer-mid','HitTest','off','PickableParts','none');
+                L.fg  = hggroup('Parent',ax,'Tag','layer-fg','HitTest','off','PickableParts','none');
+                try
+                    uistack(L.bg ,'bottom');  % run ONCE
+                    uistack(L.mid,'top');
+                    uistack(L.fg ,'top');
+                catch
                 end
+                obj.renderer_illustration.layers = L;
+                set(ax,'SortMethod','childorder');
+                set(ancestor(ax,'figure'),'Renderer','opengl','GraphicsSmoothing','off');
+            else
+                L = obj.renderer_illustration.layers;
             end
         end
 
