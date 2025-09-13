@@ -50,14 +50,6 @@ The app detects missing toolboxes and will disable playback with a clear message
 
 ---
 
-## Installation
-
-```matlab
-% Clone the repository then in MATLAB:
-addpath(genpath('<path-to>/binauralizer'));
-savepath; % optional
-```
-
 ---
 ## Citing Binauralizer
 
