@@ -213,13 +213,14 @@ classdef AudioEngine < handle
 
                 while obj.RB.NumUnreadSamples >= blk && ~obj.stop_now
                     inFrame = read(obj.RB, blk);
+                    if ~isempty(obj.MasterEQ) && isvalid(obj.MasterEQ)
+                        inFrame = obj.MasterEQ.apply(inFrame);
+                    end
+
+
                     outFrame = obj.C.Setup.MasterVolume*obj.C.Scene.render_sound_scene( ...
                         inFrame, obj.C.Setup.Binauralization, obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation);
                     % Apply master EQ (no-op if disabled)
-                    if ~isempty(obj.MasterEQ) && isvalid(obj.MasterEQ)
-                        outFrame = obj.MasterEQ.apply(outFrame);
-                    end
-
                     obj.Out(outFrame);
                     if obj.C.Video.hasVideo()
                         obj.C.Video.onAudioSamplesProcessed(size(outFrame,1));

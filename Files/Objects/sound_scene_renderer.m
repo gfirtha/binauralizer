@@ -129,7 +129,7 @@ classdef sound_scene_renderer < handle
                 obj.SFS_renderer{m}.virtual_source.source_signal.set_signal(obj.SFS_renderer{m}.virtual_source.gain*input(:,m));
                 obj.SFS_renderer{m}.render;
             end
-            if obj.decorrelator.mode
+            if (obj.Setup.Decorrelation ~= 1)
                 obj.decorrelator.render;
             end
             if binaural_mode

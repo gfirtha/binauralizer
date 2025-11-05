@@ -22,6 +22,11 @@ classdef TransportBar < handle
             w2 = 0.14;                  % base width for action buttons
             fsSmall = 9;                % slightly smaller font for more room
 
+            obj.C.ensureEngine();
+            if isempty(obj.C.Engine.MasterEQ) || ~isvalid(obj.C.Engine.MasterEQ)
+                obj.C.Engine.MasterEQ = audioapp.dsp.MasterEQ(obj.C);
+            end
+
             % Play / Stop / Volume
             obj.BtnPlay = uicontrol(obj.Panel,'Style','pushbutton','String','Play',...
                 'Units','normalized','Position',[x 0.25 w h],'Callback',@(s,e)obj.onPlay()); x = x+w+pad;
@@ -84,14 +89,23 @@ classdef TransportBar < handle
         end
 
         function onRenderImpulsive(obj)
-            sim = sound_scene_simulator(obj.C.Scene, obj.C.SceneGUI, 'impulse', 3 );
+            obj.C.ensureEngine();
+            if isempty(obj.C.Engine.MasterEQ) || ~isvalid(obj.C.Engine.MasterEQ)
+                obj.C.Engine.MasterEQ = audioapp.dsp.MasterEQ(obj.C);
+            end
+            sim = sound_scene_simulator(obj.C.Scene, obj.C.SceneGUI, 'impulse', 3, obj.C.Engine.MasterEQ);
             sim.evaluate_field(0);
         end
 
         function onGetTransfer(obj)
-            sim = sound_scene_simulator(obj.C.Scene, obj.C.SceneGUI, 'impulse', 1 );
+            obj.C.ensureEngine();
+            if isempty(obj.C.Engine.MasterEQ) || ~isvalid(obj.C.Engine.MasterEQ)
+                obj.C.Engine.MasterEQ = audioapp.dsp.MasterEQ(obj.C);
+            end
+            sim = sound_scene_simulator(obj.C.Scene, obj.C.SceneGUI, 'impulse', 1, obj.C.Engine.MasterEQ);
             sim.plot_transfer();
         end
+
 
         % NEW: launch monitor-mode simulator (timer-driven ~10 Hz per your class)
         function onMonitor(obj)

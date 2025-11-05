@@ -38,6 +38,9 @@ classdef sound_scene_simulator < handle
         % --- Monitor update throttle (timer-based)
         monitorTimer          % timer handle
         monitorRate (1,1) double = 20   % target FPS (refreshes per second)
+
+        masterEQ   % audioapp.dsp.MasterEQ (opcionális)
+
     end
 
     methods
@@ -54,6 +57,10 @@ classdef sound_scene_simulator < handle
             N = length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series);
 
             t0_default = N/2/fs;
+
+            if nargin >= 5 && ~isempty(varargin{5})
+                obj.masterEQ = varargin{5};
+            end
 
             switch obj.simulation_type
                 case 'harmonic'
@@ -155,7 +162,7 @@ classdef sound_scene_simulator < handle
                     uicontrol('Style','text','Parent',obj.fig,'Units','normalized',...
                         'Position',[0.05 0.05 0.2 0.03],'String','Time (s)');
                     obj.timeFreqSlider = uicontrol('Style','slider','Parent',obj.fig,'Units','normalized',...
-                        'Position',[0.275 0.05 0.4 0.03],'Min',-0.5e-2+t0_default,'Max',2e-2+t0_default,'Value',t0_default,...
+                        'Position',[0.275 0.05 0.4 0.03],'Min',-2e-2+t0_default,'Max',2e-2+t0_default,'Value',t0_default,...
                         'Callback', @(src,~) obj.update_time(src.Value));
 
                     % -> readout to the right of slider
@@ -236,9 +243,21 @@ classdef sound_scene_simulator < handle
                         obj.temporary_sound_scene.render_sound_scene(input,false,false);
                     end
                 case 'impulse'
-                    input = repmat( [hann(obj.pulse_width);zeros(N-obj.pulse_width,1)] ...
-                        ,1 , length(obj.temporary_sound_scene.virtual_sources));
+                    input = repmat([hann(obj.pulse_width); zeros(N-obj.pulse_width,1)], ...
+                        1, length(obj.temporary_sound_scene.virtual_sources));
+
+                    % --- Master EQ alkalmazása, ha elérhető és engedélyezett ---
+                    if ~isempty(obj.masterEQ) && isvalid(obj.masterEQ) && obj.masterEQ.Enabled
+                        try
+                            obj.masterEQ.setFs(fs);           % biztos, ami biztos: FS szinkron
+                        catch
+                        end
+                        % MasterEQ.apply bemenet: [Nsamp x Nchan]
+                        input = obj.masterEQ.apply(input);
+                    end
+
                     obj.temporary_sound_scene.render_sound_scene(input,false,false);
+
                 case 'monitor'
             end
         end
