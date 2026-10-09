@@ -15,11 +15,16 @@ classdef MainWindow < handle
 
         ViewMenu   % scene view selector (top / rear / 3D / first person)
 
-        % Top level: the Binauralizer and the Source separation module
+        % Top level modules: 1 Binauralizer, 2 Source separation,
+        % 3 Room builder, 4 Loudspeaker designer
         TopTabs
         MainTab
         SepTab
+        RoomTab
+        SpeakerTab
         SeparationPanel audioapp.ui.SeparationPanel
+        RoomBuilderPanel audioapp.ui.RoomBuilderPanel
+        LoudspeakerDesignerPanel audioapp.ui.LoudspeakerDesignerPanel
     end
 
     methods
@@ -34,6 +39,8 @@ classdef MainWindow < handle
             obj.TopTabs = uitabgroup(obj.Fig,'Units','normalized','Position',[0 0 1 1]);
             obj.MainTab = uitab(obj.TopTabs,'Title','  Binauralizer  ');
             obj.SepTab  = uitab(obj.TopTabs,'Title','  Source separation  ');
+            obj.RoomTab = uitab(obj.TopTabs,'Title','  Room builder  ');
+            obj.SpeakerTab = uitab(obj.TopTabs,'Title','  Loudspeaker designer  ');
             host = obj.MainTab;
 
             % --- Scene view selector (top bar) ---
@@ -83,6 +90,10 @@ classdef MainWindow < handle
 
             % Source separation module (top-level tab)
             obj.SeparationPanel = audioapp.ui.SeparationPanel(obj.SepTab, obj.C);
+
+            % Room builder and Loudspeaker designer modules (placeholders)
+            obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
+            obj.LoudspeakerDesignerPanel = audioapp.ui.LoudspeakerDesignerPanel(obj.SpeakerTab, obj.C);
         end
 
         function onViewChanged(obj)
