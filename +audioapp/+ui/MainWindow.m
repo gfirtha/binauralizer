@@ -16,13 +16,16 @@ classdef MainWindow < handle
         ViewMenu   % scene view selector (top / rear / 3D / first person)
 
         % Top level modules: 1 Binauralizer, 2 Source separation,
-        % 3 Room builder, 4 Loudspeaker designer
+        % 3 Measurement-based reproduction, 4 Room builder,
+        % 5 Loudspeaker designer
         TopTabs
         MainTab
         SepTab
+        MeasTab
         RoomTab
         SpeakerTab
         SeparationPanel audioapp.ui.SeparationPanel
+        MeasurementPanel audioapp.ui.MeasurementPanel
         RoomBuilderPanel audioapp.ui.RoomBuilderPanel
         LoudspeakerDesignerPanel audioapp.ui.LoudspeakerDesignerPanel
     end
@@ -39,6 +42,7 @@ classdef MainWindow < handle
             obj.TopTabs = uitabgroup(obj.Fig,'Units','normalized','Position',[0 0 1 1]);
             obj.MainTab = uitab(obj.TopTabs,'Title','  Binauralizer  ');
             obj.SepTab  = uitab(obj.TopTabs,'Title','  Source separation  ');
+            obj.MeasTab = uitab(obj.TopTabs,'Title','  Measurement-based reproduction  ');
             obj.RoomTab = uitab(obj.TopTabs,'Title','  Room builder  ');
             obj.SpeakerTab = uitab(obj.TopTabs,'Title','  Loudspeaker designer  ');
             host = obj.MainTab;
@@ -90,6 +94,9 @@ classdef MainWindow < handle
 
             % Source separation module (top-level tab)
             obj.SeparationPanel = audioapp.ui.SeparationPanel(obj.SepTab, obj.C);
+
+            % Measurement-based reproduction (spherical-array RIR analysis)
+            obj.MeasurementPanel = audioapp.ui.MeasurementPanel(obj.MeasTab, obj.C);
 
             % Room builder and Loudspeaker designer modules (placeholders)
             obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
