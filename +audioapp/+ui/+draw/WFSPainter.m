@@ -1,6 +1,7 @@
 classdef WFSPainter
     % WFSPainter  Draws WFS renderer overlays: reference contour,
-    %   amplitude distribution, tapering window, and illuminated/tapered zones.
+    %   amplitude distribution, tapering window, illuminated/tapered zones,
+    %   and the intended-field amplitude map A0.
     %
     % Zone visualization uses the zone structs provided by wfs_renderer
     % (rp.zone array with .boundaries and .type), NOT inferred from win_taper.
@@ -60,6 +61,30 @@ classdef WFSPainter
                 store = audioapp.ui.draw.WFSPainter.hideField(store, 'zoneRays');
                 store = audioapp.ui.draw.WFSPainter.hideField(store, 'zonePolys');
             end
+
+            % ── 5) Intended-field amplitude A0 (Part I, Eq. WFS_amp_dist) ──
+            if isfield(setting, 'showA0') && setting.showA0 && ismethod(renderer, 'get_intended_amplitude')
+                store = audioapp.ui.draw.WFSPainter.drawA0(ax, store, renderer);
+            else
+                store = audioapp.ui.draw.WFSPainter.hideField(store, 'wfsA0');
+            end
+        end
+
+        function store = drawA0(ax, store, renderer)
+            % Contours of 20 log10 A0 over the visible area: 0 dB (bold) is
+            % where the synthesis is amplitude-correct.
+            xl = xlim(ax); yl = ylim(ax); n = 70;
+            [X, Y] = meshgrid(linspace(xl(1), xl(2), n), linspace(yl(1), yl(2), n));
+            A0 = renderer.get_intended_amplitude([X(:) Y(:)]);
+            Z = reshape(20*log10(max(A0, 1e-6)), size(X));
+            Z(~isfinite(reshape(A0, size(X))) | reshape(A0, size(X)) <= 0) = NaN;
+            if isfield(store, 'wfsA0'), delete(store.wfsA0(isgraphics(store.wfsA0))); end
+            [~, h1] = contour(ax, X, Y, Z, [-6 -3 -1 1 3 6], 'LineColor', [0.2 0.4 0.8], ...
+                'LineStyle', ':', 'ShowText', 'on', 'LabelSpacing', 400, 'HitTest', 'off', 'Tag', 'WFSA0');
+            [~, h2] = contour(ax, X, Y, Z, [0 0], 'LineColor', [0.1 0.3 0.8], 'LineWidth', 1.5, ...
+                'HitTest', 'off', 'Tag', 'WFSA0');
+            store.wfsA0 = [h1 h2];
+            xlim(ax, xl); ylim(ax, yl);
         end
 
         % ═══════════════════════════════════════════════════════════

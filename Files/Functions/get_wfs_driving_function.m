@@ -1,4 +1,8 @@
 function [ amp, delay, focused, AAfilt ] = get_wfs_driving_function( xs, model, x0, n0, fs, c, antialiasing )
+%GET_WFS_DRIVING_FUNCTION  DEPRECATED - used only by Rendering_engines/unused.
+%   Not consistent with Firtha, Limitations of WFS Part I: the focused flag
+%   is inverted, the focused d_ref has the wrong sign and the focused window
+%   is cosine-shaped. The live implementation is wfs_renderer.get_delay_and_gain.
 switch model
     case 'point_source'
         k = bsxfun( @minus, x0, xs );

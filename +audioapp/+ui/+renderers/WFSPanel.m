@@ -4,6 +4,8 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
         ChkLowCut
         TxtLowCutFreq
         EdtTaper
+        EdtTaperFoc
+        ChkA0
         PopRefMode
         PnlRef
         ChkRef
@@ -31,16 +33,21 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
                 'Units','normalized','Position',[0.60 0.88 0.30 0.08],...
                 'Callback', @(s,~)obj.onAntialias(s));
 
-            uicontrol(obj.Root,'Style','text','String','Tapering coefficient (0..1):',...
-                'Units','normalized','Position',[0.07 0.78 0.60 0.08],...
+            uicontrol(obj.Root,'Style','text','String','Tapering 0..1 (diverging / focused):',...
+                'Units','normalized','Position',[0.07 0.78 0.55 0.08],...
                 'HorizontalAlignment','left');
 
             obj.EdtTaper = uicontrol(obj.Root,'Style','edit',...
-                'Units','normalized','Position',[0.70 0.78 0.20 0.08],...
+                'Units','normalized','Position',[0.62 0.78 0.14 0.08],...
+                'TooltipString','Tukey fraction of the active arc, diverging sources',...
                 'Callback', @(s,~)obj.onTaper(s));
+            obj.EdtTaperFoc = uicontrol(obj.Root,'Style','edit',...
+                'Units','normalized','Position',[0.78 0.78 0.14 0.08],...
+                'TooltipString','Tukey fraction for focused sources (Part I: they need a smooth taper)',...
+                'Callback', @(s,~)obj.onTaperFoc(s));
 
-            % Low-freq pre-eq shelving
-            obj.ChkLowCut = uicontrol(obj.Root,'Style','checkbox','String','Low-freq pre-eq shelving',...
+            % Low-frequency compensation (Part II)
+            obj.ChkLowCut = uicontrol(obj.Root,'Style','checkbox','String','Low-freq compensation (Part II, f_c1 / f_c2)',...
                 'Units','normalized','Position',[0.07 0.68 0.85 0.08],...
                 'Callback', @(s,~)obj.onLowCut(s));
             obj.TxtLowCutFreq = uicontrol(obj.Root,'Style','text','String','fc: — Hz',...
@@ -65,20 +72,25 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
             %     'HorizontalAlignment','left','FontWeight','bold');
 
             obj.ChkRef = uicontrol(obj.Visuals,'Style','checkbox','String','Reference contour',...
-                'Units','normalized','Position',[0.10 0.80 0.70 0.08],...
+                'Units','normalized','Position',[0.10 0.84 0.70 0.08],...
                 'Callback', @(s,~)obj.onViz('ref',s));
 
             obj.ChkAmp = uicontrol(obj.Visuals,'Style','checkbox','String','Amplitude distribution',...
-                'Units','normalized','Position',[0.10 0.60 0.70 0.08],...
+                'Units','normalized','Position',[0.10 0.67 0.70 0.08],...
                 'Callback', @(s,~)obj.onViz('amp',s));
 
             obj.ChkTaper = uicontrol(obj.Visuals,'Style','checkbox','String','Tapering window',...
-                'Units','normalized','Position',[0.10 0.40 0.70 0.08],...
+                'Units','normalized','Position',[0.10 0.50 0.70 0.08],...
                 'Callback', @(s,~)obj.onViz('taper',s));
 
             obj.ChkZones = uicontrol(obj.Visuals,'Style','checkbox','String','Illuminated / taper zones',...
-                'Units','normalized','Position',[0.10 0.2 0.70 0.08],...
+                'Units','normalized','Position',[0.10 0.33 0.70 0.08],...
                 'Callback', @(s,~)obj.onViz('zones',s));
+
+            obj.ChkA0 = uicontrol(obj.Visuals,'Style','checkbox','String','Intended amplitude A0 [dB] (Part I)',...
+                'Units','normalized','Position',[0.10 0.16 0.85 0.08],...
+                'TooltipString','Contours of the amplitude error of the intended field; 0 dB = amplitude-correct',...
+                'Callback', @(s,~)obj.onViz('a0',s));
 
             obj.syncFromSetup();    % initial values
             obj.rebuildRefArea();   % build the subarea according to mode+geom
@@ -88,6 +100,9 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
             rs = obj.C.Setup.Renderer_setup;
             set(obj.ChkAA,   'Value', logical(rs.Antialiasing));
             set(obj.EdtTaper,'String', num2str(rs.Tapering));
+            tf = rs.Tapering;
+            if isfield(rs, 'TaperingFocused'), tf = rs.TaperingFocused; end
+            set(obj.EdtTaperFoc,'String', num2str(tf));
             set(obj.PopRefMode,'Value', obj.refModeToVal(rs.ReferenceMode));
 
             % Low-cut sync
@@ -104,6 +119,7 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
                 set(obj.ChkAmp,  'Value', s.rendererSetting.wfs_renderer.showAmp);
                 set(obj.ChkTaper,'Value', s.rendererSetting.wfs_renderer.showTaper);
                 set(obj.ChkZones,'Value', s.rendererSetting.wfs_renderer.showZones);
+                set(obj.ChkA0,   'Value', isfield(s.rendererSetting.wfs_renderer,'showA0') && s.rendererSetting.wfs_renderer.showA0);
             catch
             end
         end
@@ -137,14 +153,13 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
                 return;
             end
             try
-                fc_lo = r.lower_cutoff_freq;
+                fcs = r.lower_cutoff_freqs;
                 fc_hi = r.higher_cutoff_freq;
-                if fc_lo > 0 && isfinite(fc_hi)
-                    set(obj.TxtLowCutFreq, 'String', ...
-                        sprintf('fc%s%.0f  fc%s%.0f Hz', char(8595), fc_lo, char(8593), fc_hi));
-                else
-                    set(obj.TxtLowCutFreq, 'String', 'fc: — Hz');
-                end
+                fcs = fcs(isfinite(fcs) & fcs > 0);
+                if isempty(fcs), lo = '—'; else, lo = strjoin(arrayfun(@(f) sprintf('%.0f', f), fcs, 'UniformOutput', false), ' / '); end
+                if isfinite(fc_hi), hi = sprintf('%.0f', fc_hi); else, hi = '—'; end
+                set(obj.TxtLowCutFreq, 'String', ...
+                    sprintf('fc%s %s Hz (half windows)   f_al %s Hz', char(8595), lo, hi));
             catch
                 set(obj.TxtLowCutFreq, 'String', 'fc: — Hz');
             end
@@ -170,6 +185,17 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
                 set(src,'String',num2str(obj.C.Setup.Renderer_setup.Tapering));
             end
         end
+        function onTaperFoc(obj, src)
+            v = str2double(get(src,'String'));
+            if ~isnan(v) && isfinite(v) && v>=0 && v<=1
+                obj.C.Setup.Renderer_setup.TaperingFocused = v;
+                obj.updateRenderer();
+            else
+                rs = obj.C.Setup.Renderer_setup; tf = rs.Tapering;
+                if isfield(rs, 'TaperingFocused'), tf = rs.TaperingFocused; end
+                set(src,'String',num2str(tf));
+            end
+        end
         function onRefMode(obj, src)
             modes = {'concentric','fixed_point','fixed_distance'};
             obj.C.Setup.Renderer_setup.ReferenceMode = modes{ get(src,'Value') };
@@ -184,6 +210,7 @@ classdef WFSPanel < audioapp.ui.renderers.RendererPanel
                     case 'ref',   s.rendererSetting.wfs_renderer.showRef   = val; set(s.renderer_illustration.wfsRefContour,'Visible',val);
                     case 'amp',   s.rendererSetting.wfs_renderer.showAmp   = val; set(s.renderer_illustration.amplitudeDistribution,'Visible',val);
                     case 'taper', s.rendererSetting.wfs_renderer.showTaper = val; set(s.renderer_illustration.windowFunction,'Visible',val);
+                    case 'a0',    s.rendererSetting.wfs_renderer.showA0    = val;
                     case 'zones'
                         s.rendererSetting.wfs_renderer.showZones = val;
                         f = s.renderer_illustration;
