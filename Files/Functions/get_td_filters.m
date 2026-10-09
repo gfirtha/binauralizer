@@ -21,10 +21,13 @@ else
     base_vec = sum(x0(ixs,:)-xr,1)/norm(sum(x0(ixs,:)-xr,1));
     base_vec = base_vec/norm(base_vec);
     fi0 = acos( base_vec*(xs-xr)'/norm((xs-xr)) );
-   H_sp1 = exp(1i* atan( w/c*R0*tan(fi0)/tan(fi_base) ) );
-   H_sp2 = exp(-1i*atan( w/c*R0*tan(fi0)/tan(fi_base) ) );
 
-    
+   arg = atan( w/c*R0*tan(fi0)/tan(fi_base) );
+   H_sp1 = exp(+1i*arg);
+   H_sp2 = exp(-1i*arg);
+
+
+     
     H_sp1_lin = exp(1i* ( 1/4*w/c*R0*(tan(fi0)/tan(fi_base) )) );
     H_sp2_lin = exp(-1i*( 1/4*w/c*R0*(tan(fi0)/tan(fi_base) )) );
 
@@ -34,8 +37,8 @@ else
 %      semilogx(w/(2*pi),20*log10( w/c*R0*tan(fi0)/tan(fi_base) ))
 %      xlim([20,2e3])
 %      
-    td_filters(:,ixs(1)) = fftshift(ifft(H_sp1_lin,N,'symmetric'));
-    td_filters(:,ixs(2)) = fftshift(ifft(H_sp2_lin,N,'symmetric'));
+    td_filters(:,ixs(1)) = real(fftshift(ifft(H_sp1_lin,N,'symmetric')));
+    td_filters(:,ixs(2)) = real(fftshift(ifft(H_sp2_lin,N,'symmetric')));
 end
 
 end

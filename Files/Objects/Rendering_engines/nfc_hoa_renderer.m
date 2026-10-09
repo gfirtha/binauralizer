@@ -3,57 +3,69 @@ classdef nfc_hoa_renderer < base_renderer
     properties
         c
         receiver
-        omega
         HOA_filter_bank
-        Norder
+        setup
     end
 
     methods
-        function obj = nfc_hoa_renderer(virtual_source,SSD, fs, N)
+        function obj = nfc_hoa_renderer(virtual_source,SSD, Norder)
             obj = obj@base_renderer(virtual_source,SSD);
             obj.c = 343.1;
             obj.receiver = [0, 0];
-            obj.Norder = N;
+            obj.setup.Norder = Norder;
             N = length(obj.virtual_source.source_signal.time_series);
-            obj.omega = 2*pi*(0:N-1)'/N*fs;
 
-            for n = 1 : length(SSD)
+            for n = 1 : length(SSD.loudspeakers)
                 obj.output_signal{n} = signal;
                 obj.HOA_filter_bank{n} =  OLS_convolver(zeros(N,1),length(obj.virtual_source.source_signal.time_series));
             end
             obj.update_renderer;
         end
+        function info = get_renderer_info(obj)
+            info = "The renderer implements Near-field compensated Higher Order Ambisonics rendering.";
+        end
 
         function obj = update_renderer(obj, ~)
-            x0 = cell2mat(cellfun( @(x) x.position,    obj.secondary_source_distribution, 'UniformOutput', false)');
-            phi_ssd = cart2pol(x0(:,1),x0(:,2));
+            phi_ssd = cart2pol(obj.ssd.x0(:,1),obj.ssd.x0(:,2));
 
-            R0 = mean(sqrt(sum(x0.^2,2)));
+            N = length(obj.virtual_source.source_signal.time_series);
+            fs = obj.virtual_source.source_signal.fs;
+
+            omega = 2*pi*(0:N-1)'/N*fs;
+
+            R0 = mean(sqrt(sum(obj.ssd.x0.^2,2)));
             dR = mean(diff(unwrap(phi_ssd)))*R0;
             switch obj.virtual_source.source_type.Shape
                 case 'plane_wave'
                     A0 = 0.1;
-                    k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
+                    k0 = obj.receiver(1:2) - obj.virtual_source.position(1:2);
                     phi_pw = cart2pol(k0(1),k0(2));
-                    D_hoa = zeros(length(obj.omega),length(obj.secondary_source_distribution));
-                    for m = -obj.Norder:obj.Norder
-                        Gm = getSphH( abs(m), 2, obj.omega/obj.c*R0 )./exp(-1i*obj.omega/obj.c*R0);
-                        D_hoa = D_hoa - A0*2/R0*1i^(-abs(m)).*1./(1i*obj.omega/obj.c.*Gm)*exp(1i*m*(phi_pw-phi_ssd))'*dR;
+                    D_hoa = zeros(length(omega),length(obj.ssd.loudspeakers));
+                    for m = -obj.setup.Norder:obj.setup.Norder
+                        Gm = getSphH( abs(m), 2, omega/obj.c*R0 ).'./exp(-1i*omega/obj.c*R0);
+                        D_hoa = D_hoa - A0*2/R0*1i^(-abs(m)).*1./(1i*omega/obj.c.*Gm)*exp(1i*m*(phi_pw-phi_ssd))'*dR;
                     end
                 case 'point_source'
-                    k0 = bsxfun( @minus, obj.receiver, obj.virtual_source.position);
-                    [phi_s,rs] = cart2pol(k0(1),k0(2));
-                    D_hoa = zeros(length(obj.omega),length(obj.secondary_source_distribution));
-                    for m = -obj.Norder:obj.Norder
-                        Gm = getSphH( abs(m), 2, obj.omega/obj.c*rs )./getSphH( abs(m), 2, obj.omega/obj.c*R0 );
+                    k0 = obj.receiver(1:2) - obj.virtual_source.position(1:2);
+                    phi_s = cart2pol(k0(1),k0(2));
+                    % 2.5D: horizontal direction, 3D source distance
+                    rs = norm(obj.virtual_source.position - [obj.receiver(1:2), 0]);
+                    D_hoa = zeros(length(omega),length(obj.ssd.loudspeakers));
+                    for m = -obj.setup.Norder : obj.setup.Norder
+                        Gm = getSphH( abs(m), 2, omega/obj.c*rs ).'./getSphH( abs(m), 2, omega/obj.c*R0 ).';
                         D_hoa = D_hoa + 1/(2*pi*R0)*Gm*exp(1i*m*((phi_s-pi)-phi_ssd))'*dR;
                     end
             end
             D_hoa(isnan(D_hoa)) = 0;
-            d_hoa = ifft(D_hoa,length(obj.omega),1,'symmetric');
+            d_hoa = fftshift( ifft(D_hoa,length(omega),1,'symmetric') , 1);
             for n = 1 : length(obj.HOA_filter_bank)
                 obj.HOA_filter_bank{n}.update_coefficients(d_hoa(:,n));
             end
+        end
+
+        function obj = update_settings(obj,setup)
+            obj.setup.Norder = setup.HOAorder;
+            obj.update_renderer;
         end
 
         function render(obj)
@@ -65,4 +77,9 @@ classdef nfc_hoa_renderer < base_renderer
 
     end
 end
+
+
+
+
+
 

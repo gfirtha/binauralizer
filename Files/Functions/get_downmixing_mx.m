@@ -6,17 +6,17 @@ else
     ls_in = cell2mat(cellfun( @(x) x.position', loudspeakers,'UniformOutput',false));
     R0 = cell2mat(cellfun( @(x) sqrt(sum(x.position.^2,2)), loudspeakers,'UniformOutput',false));
     ls_in = bsxfun(@times, ls_in, 1./R0);
-    fi_in = cart2pol(ls_in(1,:),ls_in(2,:));
     
-    ls_out = get_default_layout(Nout, 1)';
-    fi_out = cart2pol(ls_out(1,:),ls_out(2,:));
+    Nout = min(Nout,5);
+    ls_out = get_default_layout(Nout, 1, 'circular')';
 
-    for n = 1 : length(fi_in)
-        [~,i] = sort(abs( fi_out - fi_in(n) ));
-        l = ls_out(:,sort(i(1:2)));
+    mx = zeros(size(ls_out,2),size(ls_in,2));
+    for n = 1 : size(ls_in,2)
+        [~,i] = sort(ls_out'*ls_in(:,n),'descend');
         ind = i(1:2);
+        l = ls_out(:,ind);
         g = l\ls_in(:,n)/norm(l\ls_in(:,n));
-        mx(:,n) = g/norm(g);
+        mx(ind,n) = g/norm(g);
     end
     
 

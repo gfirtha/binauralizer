@@ -1,14 +1,15 @@
 classdef binaural_renderer < handle
-    %BINAURAL_JOB Summary of this class goes here
-    %   Detailed explanation goes here
+    %BINAURAL_RENDERER  Per-loudspeaker binaural rendering (HRTF + directivity).
 
     properties
         binaural_source
         receiver
         output_bus
-        source_directivity
+        source_directivity      % legacy: directivity_table (kept for compat)
         output_signal
         extrapolator
+        N_fft                   % FFT length for directivity evaluation
+        fs                      % sample rate
     end
     properties (SetAccess = protected)
         binaural_filter
@@ -19,11 +20,14 @@ classdef binaural_renderer < handle
             obj.binaural_source = source;
             obj.receiver = receiver;
             obj.output_bus = output_bus;
-            obj.source_directivity = directivity;
+            obj.source_directivity = directivity;  % legacy fallback
             obj.extrapolator = extrapolator;
 
+            obj.fs = source.source_signal.fs;
+            obj.N_fft = length(source.source_signal.time_series);
+
             obj.binaural_filter  = OLS_convolver(obj.extrapolator.extrapolate_hrtf(source,receiver), ...
-                                        length(obj.binaural_source.source_signal.time_series),'spectrum');
+                                        obj.N_fft, 'spectrum');
             obj.output_signal = signal;
             obj.update_directivity;
         end
@@ -32,12 +36,38 @@ classdef binaural_renderer < handle
              obj.binaural_filter.update_coefficients( obj.extrapolator.extrapolate_hrtf(obj.binaural_source,obj.receiver)  );
         end
 
-        function obj = update_directivity(obj)
-            v_vec = (obj.receiver.position-obj.binaural_source.position);
-            theta0 = acos(v_vec*obj.binaural_source.orientation'/norm(v_vec));
-            [~,ind2] = min((obj.source_directivity.theta - theta0).^2);
-            obj.binaural_filter.update_prefilter(obj.source_directivity.directivity_mx(:,ind2),'frequency_domain');
+        function hp = get_packed_ir(obj)
+            % Two-ear impulse response (HRTF x directivity) of this
+            % loudspeaker as h_L + 1i*h_R, exactly as the convolver applies
+            % it. [] if the filter is partitioned (longer than a block).
+            hp = [];
+            if ~strcmp(obj.binaural_filter.mode, 'short_convolution'), return; end
+            hp = ifft(obj.binaural_filter.coefficients{1});
+        end
 
+        function obj = update_directivity(obj)
+            v_vec = (obj.receiver.position - obj.binaural_source.position);
+            ori = obj.binaural_source.orientation;
+            % Ensure same dimension for dot product
+            D = min(numel(v_vec), numel(ori));
+            theta0 = acos(max(-1, min(1, ...
+                dot(v_vec(1:D), ori(1:D)) / (norm(v_vec) + eps) )));
+
+            % The prefilter must match the convolver's internal FFT size
+            Nfft_conv = obj.binaural_filter.N_fft;
+
+            % Prefer the source's own Directivity object (new system)
+            if isprop(obj.binaural_source, 'directivity') && ...
+                    ~isempty(obj.binaural_source.directivity) && ...
+                    isa(obj.binaural_source.directivity, 'Directivity')
+                D_spectrum = obj.binaural_source.directivity.evaluate_freq_domain( ...
+                    Nfft_conv, obj.fs, theta0);
+                obj.binaural_filter.update_prefilter(D_spectrum(:,1), 'frequency_domain');
+            elseif ~isempty(obj.source_directivity) && isprop(obj.source_directivity, 'theta')
+                % Legacy fallback: use directivity_table
+                [~,ind2] = min((obj.source_directivity.theta - theta0).^2);
+                obj.binaural_filter.update_prefilter(obj.source_directivity.directivity_mx(:,ind2), 'frequency_domain');
+            end
         end
 
         function obj = update_renderer(obj,type)

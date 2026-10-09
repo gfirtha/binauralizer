@@ -1,0 +1,17 @@
+# Vendored third-party software and builds (ffmpeg, Cavern, bridges): fetch separately
+External_software/
+
+# Large media / data sets (kept locally)
+Data/SoundSamples/
+Data/TestMedia/
+Data/Spherical_designs/
+
+# Third-party papers (copyrighted; reading lists stay as .md)
+Literature/
+Documentation/**/*.pdf
+
+# Archives, MATLAB autosaves, scratch results
+*.zip
+*.asv
+soundfield_map_*.png
+errors

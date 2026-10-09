@@ -14,6 +14,7 @@ user_rotatefcn = [];
 constraint = 'none';
 p = [];
 user_endfcn = [];       % added by SMB (see 'for k' loop below)
+user_dblclickfcn = [];  % called on double-click instead of drag
 
 % At least the handle to the object must be given
 Narg = nargin;
@@ -36,7 +37,10 @@ Noptarg = Narg - 1;
 if Noptarg > 0
     user_movefcn = varargin{1};
     user_rotatefcn = varargin{2};
-end    
+end
+if Noptarg >= 3
+    user_dblclickfcn = varargin{3};
+end
 % =========================================================================
 % Saving initial state and parameters, setting up the object callback
 % =========================================================================
@@ -56,6 +60,7 @@ setappdata(h,'constraint_parameters',p);
 setappdata(h,'user_movefcn',user_movefcn);
 setappdata(h,'user_rotatefcn',user_rotatefcn);
 setappdata(h,'user_endfcn',user_endfcn);
+setappdata(h,'user_dblclickfcn',user_dblclickfcn);
 setappdata(h,'user_renderer',user_renderer);
 
 % Setting the object's ButtonDownFcn
@@ -69,6 +74,17 @@ set(h,'ButtonDownFcn',@click_object);
 function click_object(obj,eventdata)
 % obj here is the object to be dragged and gcf is the object's parent
 % figure since the user clicked on the object
+
+% Double-click detection: if user double-clicked AND a callback is set
+selType = get(gcf, 'SelectionType');
+if strcmp(selType, 'open')
+    dblFcn = getappdata(obj, 'user_dblclickfcn');
+    if ~isempty(dblFcn)
+        dblFcn(obj);
+        return;  % don't start drag on double-click
+    end
+end
+
 if eventdata.Button == 1
     setappdata(obj,'initial_position',get_position(obj));
     setappdata(obj,'initial_extent',compute_extent(obj));
@@ -169,6 +185,9 @@ newpos = update_position(getappdata(h,'initial_position'),dpt);
 % Setting the new position which actually moves the object
 set_position(h,newpos);
 h.UserData.Origin =  [ mean(h.Vertices(:,1)), mean(h.Vertices(:,2))  ];
+if isfield(h.UserData,'text') && isvalid(h.UserData.text)
+    h.UserData.text.set("Position", h.UserData.Origin + [0.1,0.1]);
+end
 % Calling user-provided function handle
 if ~isempty(user_movefcn)
     feval(user_movefcn,h);

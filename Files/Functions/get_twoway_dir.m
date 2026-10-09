@@ -1,6 +1,6 @@
 function directivity_mx = get_twoway_dir(fs,N_fft,fi,R)
 w = [(0 : N_fft/2 - 1)';(-N_fft/2:-1)' ]/N_fft*2*pi*fs;
-c = 343.1;
+c = audioapp.util.Physics.speedOfSound();
 
 fc = 400;
 wc = fc*2*pi;
