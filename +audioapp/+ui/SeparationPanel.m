@@ -22,6 +22,8 @@ classdef SeparationPanel < handle
         ChkDemix
         EdtStart
         EdtLen
+        SldStart
+        SldLen
         TxtStatus
         AxMap
         AxLev
@@ -34,12 +36,10 @@ classdef SeparationPanel < handle
     end
 
     properties (Constant)
-        Methods = {'phantom_objects', 'phantom_traj', 'cluster', 'wavenumber', 'soundfield', 'stft_objects', 'stft', 'avendano_5ch', 'avendano_ring', 'avendano', 'ltrt', 'matrix', 'passthrough'}
-        MethodNames = {'Phantom objects + music bed (ICA + trajectories)', 'Phantom trajectory (fast pan + music bed)', 'Wavenumber clustering (TF bins -> sources)', 'Local wavenumber + curvature (objects with distance)', 'Sound field sectors + tracking (moving objects, 360 deg)', 'STFT tracked objects (moving sources)', 'STFT fixed directions (slots)', ...
-            'Avendano-Jot 5.1 five-pair bank (C included)', ...
-            'Avendano-Jot 5.1 ring pair bank (C excluded)', ...
-            'Avendano-Jot coherence / panning index (slots)', 'Lt/Rt matrix decoder (stereo -> L C R Ls Rs)', ...
-            'Matrix (broadband Lt/Rt)', 'Passthrough (channels as objects)'}
+        % legacy methods (Files/Objects/Separation/legacy) are not offered;
+        % titles and descriptions: separator_info
+        Methods = {'stft_objects', 'stft', 'cluster', 'wavenumber', 'soundfield', 'avendano', 'ltrt', 'passthrough'}
+        MaxLen = 60             % longest excerpt [s] on the length slider
         Params = {'K', 'Objects / front slots', 1; 'Width', 'Front half-width [deg]', 1; 'Base', 'Content stereo base [deg]', 1; ...
                   'AmbAz', 'Ambience azimuth [deg]', 1; 'AmbGain', 'Ambience gain', 1; 'Tau', 'Smoothing [ms]', 1000}
     end
@@ -68,24 +68,37 @@ classdef SeparationPanel < handle
             obj.TxtMedia = txt('-', 0.88, 0.06);
             set(obj.TxtMedia, 'FontAngle', 'italic');
             txt('Method:', 0.84, 0.035);
-            obj.PopMethod = uicontrol(L, 'Style', 'popupmenu', 'String', obj.MethodNames, u{:}, ...
-                'Position', [0.04 0.795 0.92 0.045], 'Callback', @(~,~) obj.onMethod());
+            names = cellfun(@(m) getfield(separator_info(m), 'Title'), obj.Methods, 'UniformOutput', false);
+            obj.PopMethod = uicontrol(L, 'Style', 'popupmenu', 'String', names, u{:}, ...
+                'Position', [0.04 0.795 0.70 0.045], 'Callback', @(~,~) obj.onMethod());
+            uicontrol(L, 'Style', 'pushbutton', 'String', 'Info', u{:}, 'Position', [0.76 0.797 0.20 0.043], ...
+                'TooltipString', 'What the selected separator does', 'Callback', @(~,~) obj.onInfo());
             y = 0.745;
             for k = 1:size(obj.Params, 1)
                 uicontrol(L, 'Style', 'text', 'String', obj.Params{k,2}, u{:}, 'Position', [0.04 y 0.60 0.035], ...
                     'HorizontalAlignment', 'left', 'BackgroundColor', bg);
                 obj.Edt.(obj.Params{k,1}) = uicontrol(L, 'Style', 'edit', u{:}, 'Position', [0.66 y 0.30 0.04], ...
                     'Callback', @(s,~) obj.onParam(s, k));
-                y = y - 0.048;
+                y = y - 0.045;
             end
             obj.ChkDemix = uicontrol(L, 'Style', 'checkbox', 'String', 'Informed demixing (experimental)', u{:}, ...
                 'Position', [0.04 y 0.92 0.04], 'BackgroundColor', bg, 'Callback', @(s,~) obj.onDemix(s));
-            y = y - 0.065;
-            uicontrol(L, 'Style', 'text', 'String', 'Excerpt start / length [s]:', u{:}, 'Position', [0.04 y 0.56 0.035], ...
+            % excerpt: start / length, edit box + slider each
+            y = y - 0.05;
+            uicontrol(L, 'Style', 'text', 'String', 'Excerpt start [s]:', u{:}, 'Position', [0.04 y 0.56 0.035], ...
                 'HorizontalAlignment', 'left', 'BackgroundColor', bg);
-            obj.EdtStart = uicontrol(L, 'Style', 'edit', 'String', '0', u{:}, 'Position', [0.62 y 0.16 0.04], ...
-                'TooltipString', 'Start time in the media [s]');
-            obj.EdtLen = uicontrol(L, 'Style', 'edit', 'String', '5', u{:}, 'Position', [0.80 y 0.16 0.04]);
+            obj.EdtStart = uicontrol(L, 'Style', 'edit', 'String', '0', u{:}, 'Position', [0.74 y 0.22 0.04], ...
+                'TooltipString', 'Start time in the media [s] (empty: current playback time)', ...
+                'Callback', @(~,~) obj.onExcerptEdit());
+            obj.SldStart = uicontrol(L, 'Style', 'slider', u{:}, 'Position', [0.04 y-0.036 0.92 0.03], ...
+                'Min', 0, 'Max', 1, 'Value', 0, 'Callback', @(~,~) obj.onExcerptSlider());
+            y = y - 0.075;
+            uicontrol(L, 'Style', 'text', 'String', 'Excerpt length [s]:', u{:}, 'Position', [0.04 y 0.56 0.035], ...
+                'HorizontalAlignment', 'left', 'BackgroundColor', bg);
+            obj.EdtLen = uicontrol(L, 'Style', 'edit', 'String', '5', u{:}, 'Position', [0.74 y 0.22 0.04], ...
+                'Callback', @(~,~) obj.onExcerptEdit());
+            obj.SldLen = uicontrol(L, 'Style', 'slider', u{:}, 'Position', [0.04 y-0.036 0.92 0.03], ...
+                'Min', 0.5, 'Max', obj.MaxLen, 'Value', 5, 'Callback', @(~,~) obj.onExcerptSlider());
             uicontrol(L, 'Style', 'pushbutton', 'String', 'Analyze excerpt', u{:}, ...
                 'Position', [0.04 0.235 0.92 0.055], 'Callback', @(~,~) obj.onAnalyze());
             uicontrol(L, 'Style', 'pushbutton', 'String', 'Send to Binauralizer', u{:}, ...
@@ -119,15 +132,20 @@ classdef SeparationPanel < handle
             try, if E.isSeparated(), state = '   [playing separated]'; end, catch, end
             set(obj.TxtMedia, 'String', [nm ex state]);
             cfg = obj.C.Setup.Separation;
-            set(obj.PopMethod, 'Value', find(strcmpi(obj.Methods, cfg.Method), 1));
-            isStft = startsWith(cfg.Method, 'stft') || any(strcmpi(cfg.Method, {'avendano', 'avendano_ring', 'avendano_5ch', 'soundfield', 'wavenumber', 'cluster', 'phantom_traj', 'phantom_objects'}));
+            v = find(strcmpi(obj.Methods, cfg.Method), 1);
+            if isempty(v)                                   % legacy / unknown method in the setup
+                v = 1; obj.C.Setup.Separation.Method = obj.Methods{1}; cfg = obj.C.Setup.Separation;
+            end
+            set(obj.PopMethod, 'Value', v);
+            I = separator_info(cfg.Method); used = I.Params;   % only the parameters the method reads
             for k = 1:size(obj.Params, 1)
                 f = obj.Params{k,1};
                 set(obj.Edt.(f), 'String', num2str(cfg.(f) * obj.Params{k,3}), ...
-                    'Enable', char(matlab.lang.OnOffSwitchState(isStft)));
+                    'Enable', char(matlab.lang.OnOffSwitchState(any(strcmp(used, f)))));
             end
             set(obj.ChkDemix, 'Value', isfield(cfg, 'Demix') && cfg.Demix, ...
                 'Enable', char(matlab.lang.OnOffSwitchState(strcmpi(cfg.Method, 'stft_objects'))));
+            obj.syncExcerpt();
         end
     end
 
@@ -150,6 +168,64 @@ classdef SeparationPanel < handle
 
         function onDemix(obj, src)
             obj.C.Setup.Separation.Demix = logical(get(src, 'Value'));
+        end
+
+        function onInfo(obj)
+            m = obj.Methods{get(obj.PopMethod, 'Value')};
+            try
+                I = separator_info(m); ttl = I.Title; info = I.Text;
+            catch ME
+                ttl = m; info = sprintf('Unable to retrieve separator info.\n\nError:\n%s', ME.message);
+            end
+            h = figure('Name', 'Separator info', 'NumberTitle', 'off', 'MenuBar', 'none', ...
+                'ToolBar', 'none', 'Units', 'normalized', 'Position', [0.22 0.15 0.56 0.70], ...
+                'Color', [1 1 1], 'WindowStyle', 'modal');
+            uicontrol(h, 'Style', 'text', 'String', ttl, ...
+                'Units', 'normalized', 'Position', [0.04 0.93 0.92 0.05], ...
+                'HorizontalAlignment', 'left', 'BackgroundColor', [1 1 1], 'FontWeight', 'bold');
+            uicontrol(h, 'Style', 'edit', 'Max', 2, 'Min', 0, 'Enable', 'inactive', ...
+                'Units', 'normalized', 'Position', [0.04 0.10 0.92 0.82], ...
+                'HorizontalAlignment', 'left', 'String', splitlines(info), 'FontName', 'Consolas');
+            uicontrol(h, 'Style', 'pushbutton', 'String', 'Close', ...
+                'Units', 'normalized', 'Position', [0.80 0.025 0.16 0.055], ...
+                'Callback', @(~,~) close(h));
+        end
+
+        % ---------------- excerpt (start / length) ----------------
+        function onExcerptEdit(obj)
+            obj.syncExcerpt();
+        end
+
+        function onExcerptSlider(obj)
+            set(obj.EdtStart, 'String', sprintf('%.1f', get(obj.SldStart, 'Value')));
+            set(obj.EdtLen, 'String', sprintf('%.1f', get(obj.SldLen, 'Value')));
+            obj.syncExcerpt();
+        end
+
+        function syncExcerpt(obj)
+            % clamp start / length to the media and move the sliders there;
+            % an empty start box (= current playback time) is left empty
+            if isempty(obj.SldStart) || ~isgraphics(obj.SldStart), return; end
+            d = 0;
+            try, d = obj.C.Engine.getDuration(); catch, end
+            if ~(d > 0), d = obj.MaxLen; end
+            lenMax = max(0.5, min(obj.MaxLen, d));
+            len = str2double(get(obj.EdtLen, 'String'));
+            if isnan(len), len = 5; end
+            len = min(max(len, 0.5), lenMax);
+            set(obj.SldLen, 'Max', lenMax, 'Value', len, ...
+                'SliderStep', min(1, [0.5 5]/max(lenMax - 0.5, eps)));
+            set(obj.EdtLen, 'String', sprintf('%.1f', len));
+            sMax = max(d - len, 0);
+            t0 = str2double(get(obj.EdtStart, 'String'));
+            if ~isnan(t0)
+                t0 = min(max(t0, 0), sMax);
+                set(obj.EdtStart, 'String', sprintf('%.1f', t0));
+            else
+                t0 = min(get(obj.SldStart, 'Value'), sMax);
+            end
+            set(obj.SldStart, 'Max', max(sMax, eps), 'Value', t0, ...
+                'SliderStep', min(1, [1 10]/max(sMax, 1)), 'Enable', char(matlab.lang.OnOffSwitchState(sMax > 0)));
         end
 
         function status(obj, msg)
@@ -208,6 +284,7 @@ classdef SeparationPanel < handle
             if isnan(t0), t0 = E.getCurrentTime(); end
             t0 = max(0, min(t0, rd.duration() - len));
             set(obj.EdtStart, 'String', sprintf('%.1f', t0)); set(obj.EdtLen, 'String', num2str(len));
+            obj.syncExcerpt();
             a = round(t0*fs) + 1; b = min(rd.total, a + round(len*fs) - 1);
             X = audioread(rd.wav, [a b]);
             tic;
