@@ -5,7 +5,7 @@ function [h, truth] = mbr_simulate_sma_rir(arr, fs, echoes, opt)
 %
 %   [h, truth] = mbr_simulate_sma_rir(arr, fs, echoes, opt)
 %     echoes [P x 3]: azimuth (deg), elevation (deg), level (dB)
-%     opt: Nsamples 256, Nf 4096, Lsim 20 (synthesis order), bpHz
+%     opt: Nsamples 256, Nf 4096 (raised to >= 2 Nsamples), Lsim 20 (synthesis order), bpHz
 %          [125 16000] (band, 1/12-octave cosine edges), delaySpanMs
 %          [0.4 2.5] (arrivals spread uniformly), marginMs 1.0
 %   h [Nsamples x Nch]; truth: az, el, relDb, delays (s)
@@ -18,6 +18,7 @@ bpHz     = getopt(opt, 'bpHz', [125 16000]);
 span     = getopt(opt, 'delaySpanMs', [0.4 2.5]);
 margin   = getopt(opt, 'marginMs', 1.0);
 c0 = 343.1;
+Nf = max(Nf, 2^nextpow2(2*Nsamples));          % no circular wrap of the IR
 
 Q = arr.nCh();
 u = arr.x0./sqrt(sum(arr.x0.^2, 2));

@@ -14,6 +14,8 @@ This module analyses spherical-array room impulse responses (24-channel Firthenm
 | `mbr_music_map` | SH-MUSIC: modal equalisation, whitening, noise-subspace pseudo-spectrum | `offline_MUSIC_windowed.m` (V9) |
 | `mbr_herglotz_echoes` | Herglotz localisation function, Tikhonov regularisation, Gaussian mixture fit with model-order selection (Massé et al.) | `offl_herglotz_echo_detection.m` |
 | `mbr_simulate_sma_rir` | Synthetic rigid-sphere RIR of plane-wave echoes (Massé IV-A, Eq. 16) | `masse_chapter4_simulation_v4.m` |
+| `mbr_decompose_rir` | Parametric decomposition for reproduction (see below) | new |
+| `mbr_room_separator` | Plays media through the decomposition: one object per reflection IR and per SDM direction (`make_separator` method `'measured_room'`) | new |
 | `mbr_max_re_weights`, `mbr_window` | Helpers | |
 
 The example data are in `Data/Measurements/firthenmike/`: `rir_front_trunc.mat` (measured) and `rir_mass4_sim.mat` (the thesis simulation).
@@ -46,8 +48,36 @@ Not ported:
 - the `'EQ'` radial filter mode (it calls undefined functions);
 - `realtime_MUSIC.m` (live input through `mcdmex_msvc`; planned as live analysis).
 
+## Parametric reproduction (`mbr_decompose_rir` + `mbr_room_separator`)
+
+1. **Reliable reflections.** Herglotz detection runs on half-overlapping 2.5 ms windows. An echo is kept only if all of these hold:
+   - its level is at least −6 dB relative to the window's strongest echo;
+   - its sharpness λ is between 3 and 9. A plane wave seen at order 3 fits λ ≈ 5.5; λ ≈ 0.5 means no peak; λ well above 6 means an over-fitted side lobe;
+   - its window energy is at least −30 dB relative to the strongest window;
+   - its arrival is not at the window edge.
+
+   Echoes closer than 1.5 ms and 45° (about the order-3 beam width) are merged.
+2. **Local IR of each reflection** ("beamforming and focus"):
+   - Below f_x = N·c/(2πR) ≈ 1.6 kHz: the max-rE beam towards the reflection, normalised so that a unit plane wave gives a unit output.
+   - Above f_x: a least-squares deconvolution of the 3 nearest microphones with their rigid-sphere responses.
+   - Time focus is per band: a 6 ms window below 500 Hz, 2.5 ms between 500 Hz and f_x, 1.3 ms above f_x.
+3. **Residual.** The reflections are re-synthesised at the microphones with the rigid-sphere model and subtracted.
+4. **Diffuseness check** of the original and the residual, between 500 Hz and f_x:
+   - DirAC diffuseness, from first-order SH;
+   - Avendano–Jot short-time coherence of opposite microphones.
+5. **SDM.** The residual omni pressure is split onto 16 fixed directions, using the per-sample DOA from the smoothed pseudo-intensity.
+6. **Playback.** The media is convolved with every IR, one object per IR, and the Binauralizer renders the objects.
+
+**Validation on a synthetic scene** (4 plane waves plus a diffuse tail of 300 waves):
+- Directions: 0.2–9.6° error.
+- Arrival times: within 0.02 ms.
+- Levels: within 0.4–2.7 dB.
+- A unit plane wave gives a local IR gain of 0.93–0.98 in every band.
+- In the early residual, DirAC diffuseness rises from 0.56 to 0.87. The late residual is identical to the input (1.8e-8).
+- The separator reproduces the IRs to 3e-16 with zero latency.
+
 ## Planned
 
 - **Microphone layouts:** selectable layouts via `mbr_mic_array.from_file` plus GUI.
-- **Parametric reproduction:** direct sound plus the detected reflections (time, direction, level) as virtual sources in the Binauralizer.
-- **Late part / diffuse residual:** SH/Ambisonic binaural decoding (see `hoa_renderer`).
+- **Distances:** the object distance from the arrival time. Objects currently sit on the unit sphere and the delays are in the IRs.
+- **Overlapping reflections:** below 500 Hz, reflections closer than 5 ms share their low band.

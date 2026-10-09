@@ -190,6 +190,21 @@ switch m
             'a true 70 deg; best of all on the circling source, still ~30 deg'
             'error). Power preserving per band. Weaker than stft_objects on'
             'stereo. A hybrid EM: the mean comes from the Kalman state.'};
+    case 'measured_room'
+        cls = 'mbr_room_separator';
+        I.Title = 'Measured room: reflections + SDM diffuse part';
+        I.Status = 'experimental';
+        I.Params = {};
+        txt = {
+            'Parametric reproduction of a spherical-array RIR (Measurement-based'
+            'reproduction tab, mbr_decompose_rir): every reliably detected'
+            'reflection is a point source with its own local impulse response'
+            '(max-rE beam towards it, time-focused; omni above the aliasing'
+            'frequency); the residual - checked for diffuseness by DirAC'
+            'diffuseness and Avendano-Jot coherence - is rendered by the Spatial'
+            'Decomposition Method onto fixed directions. The media (mono) is'
+            'convolved with every IR. Sent from that tab, not offered in the'
+            'separation method list.'};
     % ---- legacy ----
     case 'matrix'
         cls = 'matrix_separator';

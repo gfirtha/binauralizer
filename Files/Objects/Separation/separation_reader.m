@@ -99,6 +99,7 @@ classdef separation_reader < handle
 
         function [wav, tmp] = convert(file, fs)
             tmp = '';
+            if ~isfile(file) && ~isempty(which(file)), file = which(file); end   % relative to the MATLAB path (ffmpeg needs a real path)
             [~,~,ext] = fileparts(file);
             if strcmpi(ext, '.wav')
                 try

@@ -1076,6 +1076,9 @@ classdef listener_space_axes < handle
         end
 
         function tf = pointer_over_axes(obj, fig)
+            % only while the axes are visible (not on another top-level tab)
+            tab = ancestor(obj.main_axes, 'uitab');
+            if ~isempty(tab) && ~isequal(tab.Parent.SelectedTab, tab), tf = false; return; end
             u = fig.Units; fig.Units = 'pixels';
             p = fig.CurrentPoint;
             fig.Units = u;

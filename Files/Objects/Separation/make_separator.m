@@ -13,6 +13,9 @@ function sep = make_separator(cfg)
 %   legacy/README.md): 'matrix', 'avendano_ring', 'avendano_5ch',
 %   'phantom_objects', 'phantom_traj'.
 %   stft, avendano: cfg.K, cfg.Width, cfg.Base, cfg.AmbAz, cfg.AmbGain, cfg.Tau
+%   'measured_room' (cfg.Room of mbr_decompose_rir): reliable reflections with
+%   their local IRs + SDM-rendered diffuse residual, from the
+%   Measurement-based reproduction tab.
 %   A description of every method: separator_info(method).
 
 switch lower(cfg.Method)
@@ -32,6 +35,9 @@ switch lower(cfg.Method)
         sep = set_fields(wavenumber_separator(), cfg, {'K', 'AmbGain'});
     case 'cluster'
         sep = set_fields(cluster_separator(), cfg, {'K', 'AmbGain'});
+    case 'measured_room'
+        % Measurement-based reproduction: cfg.Room from mbr_decompose_rir
+        sep = set_fields(mbr_room_separator(cfg.Room), cfg, {'Gain', 'DiffuseGain', 'UseDiffuse'});
     % ---- legacy ----
     case 'matrix'
         sep = matrix_separator();

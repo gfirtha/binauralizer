@@ -9,10 +9,16 @@ classdef MeasurementPanel < handle
     %     - SH-MUSIC (signal subspace L, band)
     %     - Herglotz echo detection and localisation (Massé et al.)
     %   Select a window by dragging on the RIR (or type start / length) and
-    %   press Analyze. Planned (disabled): other microphone layouts, and
-    %   the reproduction in the Binauralizer (parametric: direct sound +
-    %   detected reflections as virtual sources; or SH / Ambisonic
-    %   binaural decoding).
+    %   press Analyze. Mouse wheel over the RIR: zoom (shift: pan),
+    %   double click: zoom to the early part / whole RIR.
+    %   Reproduction: "Decompose" splits the RIR into reliably detected
+    %   reflections (point sources with their own local, beamformed and
+    %   time-focused impulse responses) and a residual, checked for
+    %   diffuseness (DirAC diffuseness, Avendano-Jot coherence) and rendered
+    %   by SDM onto fixed directions (mbr_decompose_rir). "Send to
+    %   Binauralizer" plays the media loaded in the Binauralizer through
+    %   these objects (mbr_room_separator); "Bypass" returns to the media.
+    %   Planned: other microphone layouts.
 
     properties
         C
@@ -29,8 +35,15 @@ classdef MeasurementPanel < handle
         AxAux
         TxtResult
         WinPatch
+        ReflMarks = gobjects(0)
+        EdtRange
+        EdtMaxRefl
+        EdtNDiff
+        EdtIrLen
+        BtnSend
         Data = []           % struct: h, fs, file, arr
         Result = []
+        Room = []           % mbr_decompose_rir result
     end
 
     properties (Constant)
@@ -85,8 +98,8 @@ classdef MeasurementPanel < handle
                 uicontrol(L, 'Style', 'text', 'String', obj.Params{k,2}, u{:}, 'Position', [0.04 y 0.60 0.03], ...
                     'HorizontalAlignment', 'left', 'BackgroundColor', bg);
                 obj.Edt.(obj.Params{k,1}) = uicontrol(L, 'Style', 'edit', 'String', num2str(obj.Params{k,3}), ...
-                    u{:}, 'Position', [0.66 y 0.30 0.035]);
-                y = y - 0.042;
+                    u{:}, 'Position', [0.66 y 0.30 0.033]);
+                y = y - 0.038;
             end
             y = y - 0.01;
             uicontrol(L, 'Style', 'text', 'String', 'Window start / length [ms]:', u{:}, ...
@@ -97,14 +110,26 @@ classdef MeasurementPanel < handle
                 'Position', [0.04 y-0.06 0.92 0.05], 'FontWeight', 'bold', 'Callback', @(~,~) obj.onAnalyze());
             txt('Tip: drag on the RIR plot to select a window.', y-0.10, 0.03);
 
-            % --- reproduction (planned) ---
-            txt('Reproduction in the Binauralizer (planned):', 0.20, 0.03);
-            uicontrol(L, 'Style', 'popupmenu', 'String', ...
-                {'Parametric: direct + reflections as virtual sources', 'SH / Ambisonic binaural decoding'}, ...
-                u{:}, 'Position', [0.04 0.155 0.92 0.04], 'Enable', 'off');
-            uicontrol(L, 'Style', 'pushbutton', 'String', 'Send to Binauralizer', u{:}, ...
-                'Position', [0.04 0.095 0.92 0.05], 'Enable', 'off');
-            obj.TxtStatus = txt('Load a RIR set (or pick an example).', 0.005, 0.08);
+            % --- reproduction: reflections + SDM diffuse part ---
+            txt('Reproduction (reflections + SDM diffuse part):', 0.245, 0.03);
+            lab = @(s, y) uicontrol(L, 'Style', 'text', 'String', s, u{:}, 'Position', [0.04 y 0.56 0.03], ...
+                'HorizontalAlignment', 'left', 'BackgroundColor', bg);
+            lab('Range [ms] / max. reflections:', 0.205);
+            obj.EdtRange = uicontrol(L, 'Style', 'edit', 'String', '50', u{:}, 'Position', [0.62 0.205 0.16 0.033], ...
+                'TooltipString', 'Span after the direct sound searched for reflections');
+            obj.EdtMaxRefl = uicontrol(L, 'Style', 'edit', 'String', '24', u{:}, 'Position', [0.80 0.205 0.16 0.033]);
+            lab('Diffuse directions / IR length [ms]:', 0.165);
+            obj.EdtNDiff = uicontrol(L, 'Style', 'edit', 'String', '16', u{:}, 'Position', [0.62 0.165 0.16 0.033], ...
+                'TooltipString', 'Number of fixed SDM directions of the diffuse residual');
+            obj.EdtIrLen = uicontrol(L, 'Style', 'edit', 'String', '400', u{:}, 'Position', [0.80 0.165 0.16 0.033]);
+            uicontrol(L, 'Style', 'pushbutton', 'String', 'Decompose', u{:}, ...
+                'Position', [0.04 0.115 0.28 0.045], 'Callback', @(~,~) obj.onDecompose());
+            obj.BtnSend = uicontrol(L, 'Style', 'pushbutton', 'String', 'Send to Binauralizer', u{:}, ...
+                'Position', [0.34 0.115 0.40 0.045], 'FontWeight', 'bold', 'Enable', 'off', ...
+                'Callback', @(~,~) obj.onSend());
+            uicontrol(L, 'Style', 'pushbutton', 'String', 'Bypass', u{:}, ...
+                'Position', [0.76 0.115 0.20 0.045], 'Callback', @(~,~) obj.onBypass());
+            obj.TxtStatus = txt('Load a RIR set (or pick an example).', 0.005, 0.10);
             set(obj.TxtStatus, 'ForegroundColor', [0.1 0.3 0.6]);
 
             % --- plots ---
@@ -119,10 +144,65 @@ classdef MeasurementPanel < handle
                 'Position', [0.77 0.04 0.22 0.28], 'HorizontalAlignment', 'left', 'FontName', 'Consolas', ...
                 'BackgroundColor', bg);
             obj.refreshParams();
+
+            % mouse wheel over the RIR: zoom (chained with the other handlers)
+            fig = ancestor(parent, 'figure');
+            prev = fig.WindowScrollWheelFcn;
+            fig.WindowScrollWheelFcn = @(f, e) obj.onScroll(f, e, prev);
         end
     end
 
     methods (Access = private)
+        % ---------------- RIR zoom ----------------
+        function onScroll(obj, fig, evt, prev)
+            if ~obj.overRIR(fig)
+                if ~isempty(prev), feval(prev, fig, evt); end
+                return;
+            end
+            ax = obj.AxRIR; xl = xlim(ax); full = obj.fullRange();
+            cp = get(ax, 'CurrentPoint'); x = cp(1,1);
+            if strcmp(fig.CurrentModifier, 'shift')
+                xl = xl + evt.VerticalScrollCount*0.1*diff(xl);         % pan
+            else
+                f = 1.25^evt.VerticalScrollCount;                        % wheel down = zoom out
+                span = min(max(diff(xl)*f, 0.2), diff(full));
+                xl = x - (x - xl(1))/diff(xl)*span + [0 span];
+            end
+            xl = xl - min(0, xl(1) - full(1)); xl = xl - max(0, xl(2) - full(2));
+            obj.setView(xl);
+        end
+
+        function tf = overRIR(obj, fig)
+            tf = false;
+            if isempty(obj.Data) || ~isgraphics(obj.AxRIR), return; end
+            tab = ancestor(obj.AxRIR, 'uitab');
+            if ~isempty(tab) && ~isequal(tab.Parent.SelectedTab, tab), return; end
+            u = fig.Units; fig.Units = 'pixels'; p = fig.CurrentPoint; fig.Units = u;
+            b = getpixelposition(obj.AxRIR, true);
+            tf = p(1) >= b(1) && p(1) <= b(1)+b(3) && p(2) >= b(2) && p(2) <= b(2)+b(4);
+        end
+
+        function r = fullRange(obj)
+            r = [0, size(obj.Data.h,1)/obj.Data.fs*1000];
+        end
+
+        function setView(obj, xl)
+            % x range + y scaled to the visible part
+            d = obj.Data; ax = obj.AxRIR;
+            i = max(1, floor(xl(1)/1000*d.fs) + 1):min(size(d.h,1), ceil(xl(2)/1000*d.fs) + 1);
+            m = max(abs(d.h(i,1))); if ~(m > 0), m = 1; end
+            xlim(ax, xl); ylim(ax, 1.1*m*[-1 1]);
+            if isgraphics(obj.WinPatch), set(obj.WinPatch, 'YData', 1.1*m*[-1 -1 1 1]); end
+        end
+
+        function xl = earlyView(obj)
+            % from 5 ms before the direct sound, 60 ms long
+            d = obj.Data; env = sqrt(mean(d.h.^2, 2));
+            iD = find(env >= 0.1*max(env), 1);
+            t0 = max(0, (iD - 1)/d.fs*1000 - 5);
+            xl = [t0, min(obj.fullRange()*[0;1], t0 + 60)];
+        end
+
         % ---------------- data ----------------
         function onLoad(obj)
             [f, p] = uigetfile({'*.mat', 'RIR set (*.mat with h [T x Nch])'}, 'Load room impulse responses');
@@ -155,6 +235,7 @@ classdef MeasurementPanel < handle
                 obj.status(['Load failed: ' ME.message]); return;
             end
             obj.Data = struct('h', double(h), 'fs', fs, 'file', file, 'arr', arr);
+            obj.Room = []; set(obj.BtnSend, 'Enable', 'off');
             [~, nm, ex] = fileparts(file);
             set(obj.TxtFile, 'String', sprintf('%s%s  (%d x %d, %.1f ms @ %d Hz)', nm, ex, size(h,1), size(h,2), ...
                 size(h,1)/fs*1000, fs));
@@ -170,9 +251,12 @@ classdef MeasurementPanel < handle
             yl = max(abs(d.h(:)))*[-1.1 1.1];
             obj.WinPatch = patch(ax, [0 0 0 0], [yl(1) yl(1) yl(2) yl(2)], [0.9 0.2 0.2], ...
                 'FaceAlpha', 0.2, 'EdgeColor', [0.9 0.2 0.2], 'HitTest', 'off', 'Visible', 'off');
-            hold(ax, 'off'); grid(ax, 'on'); xlim(ax, [0 t(end)]); ylim(ax, yl);
+            hold(ax, 'off'); grid(ax, 'on'); ylim(ax, yl);
             set(ax, 'ButtonDownFcn', @(~,~) obj.onDragStart());
-            title(ax, 'RIR (channel 1) and RMS envelope - drag to select a window'); xlabel(ax, 't [ms]');
+            title(ax, 'RIR (ch 1) + RMS envelope - drag: window, wheel: zoom, shift+wheel: pan, double click: early / all');
+            xlabel(ax, 't [ms]');
+            obj.ReflMarks = gobjects(0);
+            obj.setView(obj.earlyView());
             obj.showWindow();
         end
 
@@ -180,6 +264,11 @@ classdef MeasurementPanel < handle
         function onDragStart(obj)
             if isempty(obj.Data), return; end
             fig = ancestor(obj.AxRIR, 'figure');
+            if strcmp(fig.SelectionType, 'open')                         % double click: early part <-> all
+                ev = obj.earlyView();
+                if abs(diff(xlim(obj.AxRIR)) - diff(ev)) < 1e-6, obj.setView(obj.fullRange()); else, obj.setView(ev); end
+                return;
+            end
             cp = get(obj.AxRIR, 'CurrentPoint'); t0 = cp(1,1);
             old = {get(fig, 'WindowButtonMotionFcn'), get(fig, 'WindowButtonUpFcn')};
             set(fig, 'WindowButtonMotionFcn', @(~,~) obj.onDragMove(t0), ...
@@ -294,6 +383,89 @@ classdef MeasurementPanel < handle
             title(ax, sprintf('%s, %.2f - %.2f ms', R.method, R.window));
             xlabel(obj.AxAux, ''); grid(obj.AxAux, 'on');
             set(obj.TxtResult, 'String', res);
+        end
+
+        % ---------------- reproduction ----------------
+        function onDecompose(obj)
+            if isempty(obj.Data), obj.status('Load a RIR set first.'); return; end
+            d = obj.Data;
+            num = @(e, def) obj.numOr(e, def);
+            opt = struct('rangeMs', num(obj.EdtRange, 50), 'maxRefl', num(obj.EdtMaxRefl, 24), ...
+                'nDiff', num(obj.EdtNDiff, 16), 'irLenMs', num(obj.EdtIrLen, 400));
+            obj.status('Decomposing: reflection detection, local IRs, residual, SDM...');
+            try
+                tic; D = mbr_decompose_rir(d.h, d.arr, d.fs, opt); tc = toc;
+            catch ME
+                obj.status(['Decomposition failed: ' ME.message]); return;
+            end
+            obj.Room = D;
+            obj.drawRoom(D);
+            set(obj.BtnSend, 'Enable', 'on');
+            obj.status(sprintf('Decomposed in %.1f s: %d reflections + %d diffuse directions. Load media in the Binauralizer, then Send.', ...
+                tc, numel(D.refl), size(D.diffIR, 2)));
+        end
+
+        function v = numOr(~, e, def)
+            v = str2double(get(e, 'String'));
+            if ~isfinite(v) || v <= 0, v = def; set(e, 'String', num2str(def)); end
+        end
+
+        function drawRoom(obj, D)
+            % reflections on the RIR, directions on the map, diffuseness on the aux axes
+            delete(obj.ReflMarks(isgraphics(obj.ReflMarks)));
+            ax = obj.AxRIR; yl = ylim(ax); hold(ax, 'on');
+            tm = [D.refl.tAbs]*1000; g = [D.refl.gain];
+            obj.ReflMarks = stem(ax, tm, yl(2)*0.9*g/max(g), 'r', 'filled', 'MarkerSize', 4, 'HitTest', 'off');
+            hold(ax, 'off');
+            am = obj.AxMap; cla(am); cla(obj.AxAux);
+            tr = [D.refl.t]*1000;
+            scatter(am, mod([D.refl.az], 360), 90 - [D.refl.el], 30 + 120*g/max(g), tr, 'filled', 'MarkerEdgeColor', 'k');
+            hold(am, 'on');
+            scatter(am, mod(D.diffDirs(:,1), 360), 90 - D.diffDirs(:,2), 25, [0.6 0.6 0.6], 'x');
+            plot(am, mod(D.refl(1).az, 360), 90 - D.refl(1).el, 'kp', 'MarkerSize', 16, 'MarkerFaceColor', 'y');
+            hold(am, 'off'); axis(am, [0 360 0 180]); set(am, 'YDir', 'reverse'); grid(am, 'on');
+            colormap(am, parula); cb = colorbar(am); cb.Label.String = 'delay re direct [ms]';
+            xlabel(am, 'azimuth [deg]'); ylabel(am, 'zenith [deg]');
+            title(am, 'Reflections (size ~ level, star = direct), x = SDM directions');
+            g2 = D.diag;
+            plot(obj.AxAux, g2.t, g2.psiOrig, 'k', g2.t, g2.psiRes, 'r', g2.t, g2.cohOrig, 'k--', g2.t, g2.cohRes, 'r--');
+            ylim(obj.AxAux, [0 1]); xlim(obj.AxAux, [0 min(200, g2.t(end))]); grid(obj.AxAux, 'on');
+            title(obj.AxAux, sprintf('Diffuseness (solid) / coherence (dashed), %d-%d Hz', round(g2.band)));
+            legend(obj.AxAux, {'\psi orig', '\psi residual', 'coh orig', 'coh residual'}, 'FontSize', 6, 'Location', 'southeast');
+            xlabel(obj.AxAux, 'ms after the direct sound');
+            e = D.energy;
+            lines = arrayfun(@(k) sprintf('%2d %6.1f ms az%5.0f el%4.0f %5.1f dB', k-1, D.refl(k).t*1000, ...
+                D.refl(k).az, D.refl(k).el, 20*log10(D.refl(k).gain)), 1:min(10, numel(D.refl)), 'UniformOutput', false);
+            set(obj.TxtResult, 'String', sprintf('%d reliable reflections (of %d candidates)\nenergy: reflections %.0f%%, residual %.0f%%\n#  delay     direction   level\n%s', ...
+                numel(D.refl), D.nCandidates, 100*e.refl/e.total, 100*e.res/e.total, strjoin(lines, newline)));
+        end
+
+        function onSend(obj)
+            if isempty(obj.Room), obj.status('Decompose first.'); return; end
+            E = obj.C.Engine;
+            obj.status('Opening the media through the measured room...');
+            try
+                E.openSeparation(struct('Method', 'measured_room', 'Room', obj.Room));
+            catch ME
+                obj.status(['Failed: ' ME.message ' (load a media file in the Binauralizer first)']); return;
+            end
+            obj.C.rebuildSoundScene();                       % N_in = number of objects
+            rd = E.Objects;
+            obj.C.Scene.ObjectRoomRadius = obj.C.Setup.Loudspeaker_setup.R + 1;
+            obj.C.Scene.apply_object_positions(rd.positions(), ones(rd.nObj, 1));
+            obj.C.Scene.flush_updates();
+            obj.status(sprintf('Playing the media in the measured room: %d objects (%d reflections + %d diffuse). Press Play in the Binauralizer.', ...
+                rd.nObj, numel(obj.Room.refl), size(obj.Room.diffIR, 2)));
+        end
+
+        function onBypass(obj)
+            try
+                obj.C.Engine.bypassSeparation();
+                obj.C.rebuildSoundScene();
+                obj.status('Back to the media''s own channels.');
+            catch ME
+                obj.status(['Failed: ' ME.message]);
+            end
         end
 
         function status(obj, msg)
