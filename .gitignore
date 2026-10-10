@@ -15,3 +15,10 @@ Documentation/**/*.pdf
 *.asv
 soundfield_map_*.png
 errors
+
+# driver model tessellation caches
+*.cache.mat
+
+# third-party driver CAD models (copyright) and their caches; README stays
+Data/Driver_models/*
+!Data/Driver_models/README.md
