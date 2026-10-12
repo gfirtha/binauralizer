@@ -9,6 +9,10 @@ classdef VideoService < handle
     %   - The ONLY method that sends 'pause' to VLC is vlcToggle().
     %     It also flips VLCIsPlaying. External toggles (user pressing
     %     space in VLC) are detected by queryIsPlaying() and reconciled.
+    %   - Virtual (3D / first-person scene views): no VLC, the picture goes
+    %     onto the scene's virtual TV (VirtualTV: ffmpeg frames on the
+    %     audio clock). setVirtual switches over mid-film; the film is
+    %     decoded by one of the two only.
 
     properties
         C
@@ -20,6 +24,10 @@ classdef VideoService < handle
         FPS       double = 30
         VLCIsPlaying logical = false  % our tracking of VLC state
         Rate      double = 1          % playback rate (slow motion)
+        Virtual   logical = false     % picture on the virtual TV instead of VLC
+        TV                            % audioapp.services.VirtualTV
+        Playing   logical = false     % between playStart and playStop
+        AVOffset  double = 0          % s, + = picture later (fine lip-sync trim)
     end
 
     properties (Constant, Access = private)
@@ -46,6 +54,13 @@ classdef VideoService < handle
         function open(obj, filename)
             obj.killVLC();
             obj.Filename = filename;
+            if isempty(obj.TV), obj.TV = audioapp.services.VirtualTV(); end
+            obj.TV.open(filename);
+            obj.TV.ShowFcn = @(img) obj.gui().set_tv_image(img);
+            if ~isempty(obj.gui())
+                obj.gui().show_tv(true);
+                obj.Virtual = any(strcmp(obj.gui().ViewMode, {'3d', 'listener'}));
+            end
 
             vlcExe = obj.findVLC();
             obj.HasVLC = ~isempty(vlcExe);
@@ -72,6 +87,8 @@ classdef VideoService < handle
 
         function close(obj)
             obj.killVLC();
+            if ~isempty(obj.TV), obj.TV.close(); end
+            if ~isempty(obj.gui()), obj.gui().show_tv(false); end
             obj.Filename = '';
             obj.FPS = 30;
             obj.Duration = 0;
@@ -82,8 +99,15 @@ classdef VideoService < handle
         %  Playback control
         % ═══════════════════════════════════════════════
         function playStart(obj)
-            % Launch a fresh VLC and start playing
-            if ~obj.HasVLC || isempty(obj.Filename), return; end
+            % Launch a fresh VLC and start playing (virtual: the TV's decoder)
+            if isempty(obj.Filename), return; end
+            obj.Playing = true;
+            if ~isempty(obj.gui()), obj.gui().set_tv_locked(true); end
+            if obj.Virtual
+                obj.TV.start(obj.heardTime());
+                return;
+            end
+            if ~obj.HasVLC, return; end
             obj.killVLC();           % kill any leftover
             obj.launchVLC(obj.Filename);  % VLC starts PLAYING
             % VLC is now playing from t=0 — no need to send any command
@@ -92,6 +116,34 @@ classdef VideoService < handle
         function playStop(obj)
             % Kill VLC entirely
             obj.killVLC();
+            obj.Playing = false;
+            if ~isempty(obj.TV), obj.TV.stop(); end
+            if ~isempty(obj.gui()), obj.gui().set_tv_locked(false); end
+        end
+
+        function setVirtual(obj, tf)
+            % picture on the virtual TV (3D / first-person views) or in VLC;
+            % mid-film the other one takes over at the current time
+            if tf == obj.Virtual, return; end
+            obj.Virtual = tf;
+            if ~obj.Playing || isempty(obj.Filename), return; end
+            t = obj.heardTime();
+            paused = ~isempty(obj.C.Engine) && obj.C.Engine.is_paused;
+            if tf
+                obj.killVLC();
+                if paused
+                    obj.gui().set_tv_image(obj.TV.still(t));
+                else
+                    obj.TV.start(t);
+                end
+            else
+                obj.TV.stop();
+                if obj.HasVLC
+                    obj.launchVLC(obj.Filename);
+                    obj.seekTo(t);
+                    if paused, obj.vlcPause(); end
+                end
+            end
         end
 
         function vlcPause(obj)
@@ -109,12 +161,20 @@ classdef VideoService < handle
         end
 
         function seekTo(obj, timeSec)
+            if obj.Virtual
+                if obj.Playing, obj.TV.start(timeSec); end
+                return;
+            end
             if obj.HasVLC && ~isempty(obj.VLCSock)
                 obj.vlcCmd(sprintf('seek %d', round(timeSec)));
             end
         end
 
         function rewind(obj)
+            if obj.Virtual
+                if obj.Playing, obj.TV.start(0); end
+                return;
+            end
             if obj.HasVLC && ~isempty(obj.VLCSock)
                 obj.vlcCmd('seek 0');
                 java.lang.Thread.sleep(50);
@@ -135,8 +195,53 @@ classdef VideoService < handle
         end
 
         function ensureWindow(~), end
-        function showFirstFrame(~), end
-        function onAudioSamplesProcessed(~, ~), end
+
+        function arrangeScene(obj)
+            % Home-cinema layout with a film: the TV stands right in front of
+            % the centre loudspeaker (the array's loudspeaker closest to the
+            % listener's facing direction; nothing moves, the rendering
+            % stays as it is); a 65" screen. Without loudspeakers: in front
+            % of the listener at R.
+            g = obj.gui(); S = obj.C.Scene;
+            if isempty(g) || isempty(S) || ~obj.hasVideo(), return; end
+            rec = S.receiver.position(1:2); ori = S.receiver.orientation(1:2);
+            f = ori/max(norm(ori), eps); side = [f(2), -f(1)];   % front, right
+            L = S.loudspeaker_array;
+            P = zeros(0, 2);
+            for n = 1:numel(L), P(end+1, :) = L{n}.position(1:2); end %#ok<AGROW>
+            if isempty(P)
+                p = rec + obj.C.Setup.Loudspeaker_setup.R*f;
+            else
+                d = P - rec;
+                az = atan2d(d*side', d*f');                  % 0 = front, + = right
+                [~, c] = min(abs(az));
+                p = P(c, :);
+            end
+            diag = 65;
+            u = (rec - p)/max(norm(rec - p), eps);           % from the centre towards the listener
+            g.draw_tv(p + 0.25*u, atan2d(u(2), u(1)), diag); % just in front of the centre loudspeaker
+            g.show_tv(true);
+        end
+
+        function showFirstFrame(obj)
+            % TV picture while not playing: a frame from the first minutes
+            if isempty(obj.TV) || isempty(obj.gui()), return; end
+            img = obj.TV.still(min(10, 0.1*obj.TV.Duration));
+            if ~isempty(img), obj.gui().set_tv_image(img); end
+        end
+
+        function onAudioSamplesProcessed(obj, ~)
+            % after each audio block of the play loop: the virtual TV's frame
+            if ~obj.Virtual || ~obj.Playing || isempty(obj.TV), return; end
+            t = obj.heardTime() + obj.AVOffset;
+            if isempty(obj.TV.Proc)
+                % decoder ended (paused switch-over, end of the video stream)
+                recent = ~isempty(obj.TV.Started) && toc(obj.TV.Started) < 1;   % no respawn storm
+                if ~recent && (obj.TV.Duration == 0 || t < obj.TV.Duration - 0.5), obj.TV.start(t); end
+                return;
+            end
+            obj.TV.update(t);                  % shown by the loop's drawnow limitrate (<= 20 Hz)
+        end
         function d = getDuration(obj), d = obj.Duration; end
 
         % ═══════════════════════════════════════════════
@@ -159,6 +264,22 @@ classdef VideoService < handle
     %  Private
     % ═══════════════════════════════════════════════════════
     methods (Access = private)
+        function g = gui(obj)
+            g = [];
+            try g = obj.C.SceneGUI; catch, end
+            if ~isempty(g) && ~isvalid(g), g = []; end
+        end
+
+        function t = heardTime(obj)
+            % media time the listener hears now: output count minus the
+            % output latency (~ two blocks in the device queue)
+            t = 0;
+            E = obj.C.Engine;
+            if isempty(E), return; end
+            fs = max(obj.C.Setup.SampleRate, 1);
+            t = max(0, (E.totalSamplesOut - 2*obj.C.Setup.Block_size*E.Speed)/fs);
+        end
+
         function vlcToggle(obj)
             % The ONLY place we send 'pause' and flip our state.
             obj.vlcCmd('pause');

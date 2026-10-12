@@ -30,6 +30,10 @@ classdef MainWindow < handle
         LoudspeakerDesignerPanel audioapp.ui.LoudspeakerDesignerPanel
     end
 
+    properties (Constant)
+        ViewModes = {'top','rear','3d','listener'}   % ViewMenu order
+    end
+
     methods
         function obj = MainWindow(ctx)
             obj.C = ctx;
@@ -67,6 +71,7 @@ classdef MainWindow < handle
             phAx = axes('Parent',obj.PnlLeft,'Units','normalized','Position',[0.08 0.18 0.88 0.78]);
             set(oldAx,'Parent',obj.PnlLeft,'Units','normalized','Position',get(phAx,'Position'));
             obj.C.SceneGUI.reattachZoomUI();  % keep the +/- panel anchored to this axes
+            obj.C.SceneGUI.ViewChangedFcn = @(mode) obj.onSceneView(mode);
 
             delete(phAx);
             obj.Ax = oldAx;
@@ -104,29 +109,18 @@ classdef MainWindow < handle
         end
 
         function onViewChanged(obj)
-            modes = {'top','rear','3d'};
-            v = obj.ViewMenu.Value;
-            if v <= numel(modes)
-                obj.C.SceneGUI.set_view_mode(modes{v});
-            else
-                % first person opens its own window; the main view stays
-                obj.ViewMenu.Value = find(strcmp(modes, obj.C.SceneGUI.ViewMode));
-                obj.on3DMode();
-            end
+            % first person ('listener') is a view of the main axes as well:
+            % drag = look around, W/A/S/D walk, arrows turn / tilt, wheel = FOV
+            obj.C.SceneGUI.set_view_mode(obj.ViewModes{obj.ViewMenu.Value});
         end
 
-        % First-person view (room_view window)
-        function on3DMode(obj)
-            try
-                if isprop(obj.C,'SceneGUI') && ~isempty(obj.C.SceneGUI) && ...
-                        isprop(obj.C.SceneGUI,'room') && ~isempty(obj.C.SceneGUI.room)
-                    room_view(obj.C.Scene, obj.C.SceneGUI, obj.C.SceneGUI.room);
-                else
-                    room_view(obj.C.Scene, obj.C.SceneGUI);
-                end
-            catch ME
-                warndlg(sprintf('Unable to open 3D view:\n\n%s', ME.message), ...
-                        '3D mode', 'modal');
+        function onSceneView(obj, mode)
+            % any view change (menu, trajectory editor): the menu follows;
+            % a film's picture goes to the virtual TV in the 3D views
+            k = find(strcmp(obj.ViewModes, mode), 1);
+            if ~isempty(k), obj.ViewMenu.Value = k; end
+            if ~isempty(obj.C.Video) && isvalid(obj.C.Video)
+                obj.C.Video.setVirtual(any(strcmp(mode, {'3d', 'listener'})));
             end
         end
     end

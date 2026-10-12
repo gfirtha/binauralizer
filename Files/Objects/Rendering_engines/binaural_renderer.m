@@ -56,8 +56,13 @@ classdef binaural_renderer < handle
             % The prefilter must match the convolver's internal FFT size
             Nfft_conv = obj.binaural_filter.N_fft;
 
+            % Driver of a designed loudspeaker: its response at the listener
+            % (spherical-wave model incl. near field, not only the angle)
+            if isprop(obj.binaural_source, 'directivity') && isa(obj.binaural_source.directivity, 'DesignedDirectivity')
+                D_spectrum = obj.binaural_source.directivity.responseAt(obj.receiver.position, Nfft_conv, obj.fs);
+                obj.binaural_filter.update_prefilter(D_spectrum, 'frequency_domain');
             % Prefer the source's own Directivity object (new system)
-            if isprop(obj.binaural_source, 'directivity') && ...
+            elseif isprop(obj.binaural_source, 'directivity') && ...
                     ~isempty(obj.binaural_source.directivity) && ...
                     isa(obj.binaural_source.directivity, 'Directivity')
                 D_spectrum = obj.binaural_source.directivity.evaluate_freq_domain( ...

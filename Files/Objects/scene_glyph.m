@@ -44,6 +44,20 @@ classdef scene_glyph
             G = scene_glyph.add(G, scene_glyph.disc(-0.12*R, 1.38*R, 24), memb);
             G = scene_glyph.finish(G);
         end
+
+        function G = tv(w, h, floorZ)
+            % Flat TV: screen w x h [m] facing +x (centre at z = 0), thin
+            % bezel and cabinet, a column stand down to floorZ. G.screen: the
+            % screen's centre in the glyph frame (just in front of the bezel)
+            b = 0.012; d = 0.05;
+            G = scene_glyph.empty_glyph();
+            G = scene_glyph.add(G, scene_glyph.box([-d -w/2-b -h/2-b], [0 w/2+b h/2+b]), [0.08 0.08 0.09]);
+            G = scene_glyph.add(G, scene_glyph.box([-d-0.05 -0.03 floorZ+0.02], [-d+0.01 0.03 -h/2-b]), [0.25 0.25 0.27]);
+            G = scene_glyph.add(G, scene_glyph.box([-d-0.15 -0.25 floorZ], [-d+0.10 0.25 floorZ+0.02]), [0.25 0.25 0.27]);
+            x0 = mean(G.V(:,1));
+            G = scene_glyph.finish(G);
+            G.screen = [0.002 - x0, 0, 0];
+        end
     end
 
     methods (Static, Access = private)

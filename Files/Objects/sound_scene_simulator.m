@@ -19,7 +19,7 @@ classdef sound_scene_simulator < handle
         p_field
 
         % --- UI / state for visualization
-        viewMode            % 'real' | 'mag' | 'amperr'
+        viewMode            % 'real' | 'mag' | 'amperr' | 'ref'
         btnGroup            % uibuttongroup handle
         timeFreqSlider      % handle to the bottom slider
         lastSliderVal = 0.5 % remember slider position to refresh view
@@ -215,16 +215,22 @@ classdef sound_scene_simulator < handle
                         'SelectionChangedFcn', @(~,evt) obj.onViewChanged(evt));
 
                     uicontrol('Parent',obj.btnGroup,'Style','radiobutton', ...
-                        'Units','normalized','Position',[0.00 -0.25 0.34 1], ...
+                        'Units','normalized','Position',[0.00 -0.25 0.25 1], ...
                         'String','Re(P_{synth})','Tag','real');
 
                     uicontrol('Parent',obj.btnGroup,'Style','radiobutton', ...
-                        'Units','normalized','Position',[0.25 -0.25 0.33 1], ...
+                        'Units','normalized','Position',[0.25 -0.25 0.25 1], ...
                         'String','|P_{synth}|','Tag','mag');
 
                     uicontrol('Parent',obj.btnGroup,'Style','radiobutton', ...
-                        'Units','normalized','Position',[0.5 -0.25 0.33 1], ...
+                        'Units','normalized','Position',[0.5 -0.25 0.25 1], ...
                         'String','Amp. error','Tag','amperr');
+
+                    % the virtual sources' own field (designed loudspeakers:
+                    % their radiated field incl. near field and directivity)
+                    uicontrol('Parent',obj.btnGroup,'Style','radiobutton', ...
+                        'Units','normalized','Position',[0.75 -0.25 0.25 1], ...
+                        'String','Re(P_{ref})','Tag','ref');
 
                     obj.btnGroup.SelectedObject = findobj(obj.btnGroup.Children,'Tag','real');
                 case 'monitor'
@@ -415,7 +421,7 @@ classdef sound_scene_simulator < handle
             switch obj.simulation_type
                 case 'harmonic'
                     switch obj.viewMode
-                        case 'real'
+                        case {'real', 'ref'}
                             set(obj.simulation_result,'CData',field)
                             if median(median(abs(field))) > 0
                                 clim(ax, [-1,1]*5*median(median(abs(field))));
@@ -556,16 +562,23 @@ classdef sound_scene_simulator < handle
                 case 'mag'
                     field = abs(Z);
                 case 'amperr'
-                    [X,Y] = meshgrid(obj.x,obj.y);
-                    field_ref = zeros(size(X));
-                    for n = 1 : length(obj.temporary_sound_scene.virtual_sources)
-                        field_ref = field_ref + obj.temporary_sound_scene.virtual_sources{n}.get_sound_field(X,Y,obj.f0,obj.t0);
-                    end
-                    field = abs(Z) - abs(field_ref);
+                    field = abs(Z) - abs(obj.referenceField(obj.t0));
+                case 'ref'
+                    field = real(obj.referenceField(obj.t(end)));
+                    return;                 % no head scattering on the target field
             end
             % ── Add head diffraction if enabled ──
             if obj.includeHeadEffect
                 field = obj.addHeadScattering(field);
+            end
+        end
+
+        function P = referenceField(obj, t0)
+            % sum of the virtual sources' own fields at f0 (the target)
+            [X,Y] = meshgrid(obj.x,obj.y);
+            P = zeros(size(X));
+            for n = 1 : length(obj.temporary_sound_scene.virtual_sources)
+                P = P + obj.temporary_sound_scene.virtual_sources{n}.get_sound_field(X,Y,obj.f0,t0);
             end
         end
 
@@ -769,6 +782,8 @@ classdef sound_scene_simulator < handle
                     switch obj.viewMode
                         case 'real'
                             obj.cbarHandle.Label.String = 'Re\{P_{synth}\}';
+                        case 'ref'
+                            obj.cbarHandle.Label.String = 'Re\{P_{ref}\}';
                         case 'mag'
                             obj.cbarHandle.Label.String = '|P_{synth}| (dB)';
                         case 'amperr'

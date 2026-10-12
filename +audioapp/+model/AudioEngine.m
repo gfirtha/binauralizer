@@ -431,6 +431,8 @@ classdef AudioEngine < handle
             vlcStarted = false;
             obj.Running = true;
             runningGuard = onCleanup(@() obj.setRunning(false)); %#ok<NASGU>
+            % loop profile [s]: read, render, output (waiting for the device), TV, drawnow
+            prof = zeros(1, 5); profMax = zeros(1, 5); nIter = 0; nUnder = 0; nUnderBlk = 0;
 
             while ~obj.stop_now
 
@@ -488,6 +490,7 @@ classdef AudioEngine < handle
                     continue;
                 end
 
+                tSt = tic; tS = zeros(1, 5);
                 if ~isempty(obj.Objects)
                     % Object-based input: samples + positions from Cavern
                     % (loops by itself at the end of the stream)
@@ -512,6 +515,7 @@ classdef AudioEngine < handle
                 end
                 write(obj.RB, y);
                 obj.applyTrajectories();            % designed source paths (media time)
+                tS(1) = toc(tSt);
 
                 % Process all available full blocks
                 while obj.RB.NumUnreadSamples >= blk && ~obj.stop_now
@@ -523,11 +527,16 @@ classdef AudioEngine < handle
 
                     obj.updateBeamOverlay(inFrame);
 
+                    t1 = tic;
                     outFrame = obj.C.Setup.MasterVolume * obj.C.Scene.render_sound_scene( ...
                         inFrame, obj.C.Setup.Binauralization, ...
                         obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation);
+                    tS(2) = tS(2) + toc(t1);
 
-                    obj.Out(outFrame);
+                    t1 = tic;
+                    u = obj.Out(outFrame);
+                    tS(3) = tS(3) + toc(t1);
+                    if u > 0, nUnder = nUnder + u; nUnderBlk = nUnderBlk + 1; end
                     % media time advances Speed samples per output sample
                     obj.totalSamplesOut = obj.totalSamplesOut + size(outFrame,1)*obj.Speed;
 
@@ -537,16 +546,23 @@ classdef AudioEngine < handle
                         vlcStarted = true;
                     end
                 end
+                t1 = tic;
+                if hasVid, obj.C.Video.onAudioSamplesProcessed(); end   % virtual TV frame
+                tS(4) = toc(t1);
 
                 % Let UI callbacks run
                 drawnowCounter = drawnowCounter + 1;
                 % every block: rendering takes ~1 ms now, and 'limitrate'
                 % caps the redraws; every 8th block made dragging lag ~0.3 s
+                t1 = tic;
                 if drawnowCounter >= 1
                     drawnow limitrate
                     drawnowCounter = 0;
                 end
+                tS(5) = toc(t1);
+                prof = prof + tS; profMax = max(profMax, tS); nIter = nIter + 1;
             end
+            obj.printLoopProfile(prof, profMax, nIter, nUnder, nUnderBlk, blk/fs);
 
             % Drain partial block
             rem = obj.RB.NumUnreadSamples;
@@ -696,6 +712,17 @@ classdef AudioEngine < handle
             sc = obj.C.Scene;
             [idx, P] = T.positions(t, numel(sc.virtual_sources));
             if ~isempty(idx), sc.apply_source_positions(idx, P); end
+        end
+
+        function printLoopProfile(~, prof, profMax, nIter, nUnder, nUnderBlk, tBlk)
+            % one line at the end of playback: mean / max ms per loop pass
+            % (~one audio block); 'output' is mostly waiting for the device
+            if nIter == 0, return; end
+            m = 1e3*prof/nIter; x = 1e3*profMax;
+            fprintf(['Play loop (%d passes, block %.1f ms): read %.1f/%.1f | render %.1f/%.1f | ' ...
+                'output wait %.1f/%.1f | TV %.1f/%.1f | drawnow %.1f/%.1f ms (mean/max); ' ...
+                'underruns: %d blocks, %d samples' newline], nIter, 1e3*tBlk, m(1), x(1), m(2), x(2), ...
+                m(3), x(3), m(4), x(4), m(5), x(5), nUnderBlk, nUnder);
         end
 
         function setRunning(obj, tf)

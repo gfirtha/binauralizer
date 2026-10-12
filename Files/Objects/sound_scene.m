@@ -15,6 +15,7 @@ classdef sound_scene < handle
         % [] or 1:N = identity (SSD order == channel order)
         TestChannelFcn    % @(chIdx) callback — set externally by AppContext
         OnGeometryChangedFcn  % @() callback — fired when receiver/VS moves
+        speakers = {}     % speaker_placement: designed loudspeakers in the scene (attach_speaker)
     end
 
     properties (Access = private)
@@ -58,6 +59,14 @@ classdef sound_scene < handle
                     [p0, n0, chMap] = get_default_layout(5, R, '5.0');
                 case 6
                     [p0, n0, chMap] = get_default_layout(6, R, '5.1');
+                case 8
+                    % 7.1 (L R C LFE Lb Rb Ls Rs), the names' azimuths; the
+                    % LFE next to the listener as in the 5.1 layout
+                    az = separator_base.channel_layout(8)';
+                    position = R*[-sind(az), cosd(az)];
+                    position(isnan(az), :) = [0.2 0.2];
+                    normal = -position./sqrt(sum(position.^2, 2));
+                    return;
                 otherwise
                     [position, normal] = get_default_layout(nIn, R, 'circular');
                     return;
@@ -181,6 +190,11 @@ classdef sound_scene < handle
                     obj.loudspeaker_array{k}.channelIndex = obj.channelMap(k);
                 end
             end
+            if isfield(setup, 'DesignedSpeakers')
+                for q = 1:numel(setup.DesignedSpeakers)
+                    obj.attach_speaker(setup.DesignedSpeakers{q});
+                end
+            end
             gui.refresh_view();     % markers of the current (side/3D) view
         end
 
@@ -222,7 +236,103 @@ classdef sound_scene < handle
                 case 'ls'
                     obj.loudspeaker_array{idx}.set_position(xyz);
                     obj.schedule_update('loudspeaker_moved', idx);
+                case 'ds'
+                    obj.on_speaker_dragged(obj.gui_ref.designed_speaker_points{idx});
             end
+        end
+
+        % --- Designed loudspeakers (Loudspeaker designer -> SSD setup) ---
+        function ok = attach_speaker(obj, P)
+            % Put speaker_placement P into the scene: its SSD loudspeakers
+            % become its drivers (at the driver positions, along the driver
+            % axes, the model's response as their directivity:
+            % DesignedDirectivity), their icons give way to the shaded
+            % model, which drags / turns as one
+            ok = numel(P.Elements) == P.Model.nChannels && all(P.Elements <= numel(obj.loudspeaker_array));
+            if ~ok, return; end
+            obj.speakers{end+1} = P;
+            i = numel(obj.speakers);
+            gui = obj.gui_ref; hasGui = ~isempty(gui) && isvalid(gui);
+            for k = 1:numel(P.Elements)
+                e = P.Elements(k);
+                obj.loudspeaker_array{e}.directivity = DesignedDirectivity(P, k);
+                if hasGui, gui.set_object_hidden('ls', e, true); end
+            end
+            if hasGui
+                h = gui.draw_designed_speaker(P.Model, P.Position, P.Yaw, i);
+                draggable(h, @(h) obj.on_speaker_dragged(h), @(h) obj.on_speaker_dragged(h));
+            end
+            obj.place_speaker(P, false);
+        end
+
+        function detach_speaker(obj, P)
+            % The SSD loudspeakers of P are plain loudspeakers again (where
+            % the drivers were, their own type's directivity)
+            i = find(cellfun(@(x) x == P, obj.speakers), 1);
+            if isempty(i), return; end
+            gui = obj.gui_ref; hasGui = ~isempty(gui) && isvalid(gui);
+            for e = P.Elements(P.Elements <= numel(obj.loudspeaker_array))
+                ls = obj.loudspeaker_array{e};
+                ls.directivity = Directivity.fromSourceType(ls.source_type);
+                if hasGui, gui.set_object_hidden('ls', e, false); end
+                obj.schedule_update('loudspeaker_rotated', e);
+            end
+            if hasGui, gui.remove_designed_speaker(i); end
+            obj.speakers(i) = [];
+        end
+
+        function place_speaker(obj, P, moveModel)
+            % SSD loudspeakers to the placement's driver positions / axes;
+            % moveModel: also move the drawn model (not while the mouse
+            % drags it). The binaural renderers recompute the drivers'
+            % responses at the listener (loudspeaker_moved).
+            if nargin < 3, moveModel = true; end
+            [Pw, Aw] = P.driverWorld();
+            gui = obj.gui_ref; hasGui = ~isempty(gui) && isvalid(gui);
+            for k = 1:numel(P.Elements)
+                e = P.Elements(k);
+                ls = obj.loudspeaker_array{e};
+                ls.set_position(Pw(k,:));
+                a = Aw(k,:);
+                if numel(ls.orientation) < 3, a = a(1:2); end   % the loudspeaker's own format (2D / 3D)
+                if norm(a) > 1e-9, ls.set_orientation(a/norm(a)); end
+                if hasGui && e <= numel(gui.loudspeaker_points) && isgraphics(gui.loudspeaker_points{e})
+                    h = gui.loudspeaker_points{e};          % hidden icon: keep its drag origin in step
+                    h.Vertices(:,1:2) = h.Vertices(:,1:2) - h.UserData.Origin + Pw(k,1:2);
+                    h.UserData.Origin = Pw(k,1:2);
+                end
+                obj.schedule_update('loudspeaker_moved', e);
+                obj.schedule_update('loudspeaker_rotated', e);
+            end
+            if moveModel && hasGui
+                i = find(cellfun(@(x) x == P, obj.speakers), 1);
+                if ~isempty(i), gui.place_designed_speaker(i, P.Position, P.Yaw); end
+            end
+        end
+        function m = ssd_index(obj, idx)
+            % loudspeaker_array indices -> the renderer's SSD order (the SSD
+            % sorts its loudspeakers along the contour; the binaural
+            % renderers follow that order)
+            L = obj.scene_renderer.ssd.loudspeakers;
+            m = zeros(1, 0);
+            for e = idx(:)'
+                if e > numel(obj.loudspeaker_array), continue; end
+                j = find(cellfun(@(l) l == obj.loudspeaker_array{e}, L), 1);
+                if ~isempty(j), m(end+1) = j; end %#ok<AGROW>
+            end
+        end
+
+        function on_speaker_dragged(obj, h)
+            % The model was dragged / turned: placement from the patch
+            % (vertex mean = model origin + rotated mean offset)
+            i = h.UserData.Label;
+            if i > numel(obj.speakers), return; end
+            P = obj.speakers{i};
+            yaw = h.UserData.Orientation;
+            off = [cosd(yaw) -sind(yaw); sind(yaw) cosd(yaw)]*h.UserData.Offset(:);
+            P.Position = [h.UserData.Origin(1:2) - off', h.UserData.Z];
+            P.Yaw = yaw;
+            obj.place_speaker(P, false);
         end
 
         function obj = change_renderer(obj, setup)
@@ -236,6 +346,15 @@ classdef sound_scene < handle
 
             obj.gui_ref = gui;
             draggable(gui.receiver,@update_receiver_position, @update_receiver_orientation);
+            gui.ReceiverMoveFcn = @move_receiver_fp;
+            function move_receiver_fp(xy, yaw)
+                % first-person view: walk / turn the listener
+                moved = any(abs(xy(:)' - gui.receiver.UserData.Origin) > 1e-12);
+                gui.update_receiver(xy, [cosd(yaw), sind(yaw)]);
+                obj.receiver.set_position(xy);
+                obj.receiver.set_orientation([cosd(yaw), sind(yaw)]);
+                if moved, obj.schedule_update('receiver_moved'); else, obj.schedule_update('receiver_rotated'); end
+            end
             function update_receiver_position(receiver)
                 obj.receiver.set_position( gui.receiver.UserData.Origin );
                 obj.schedule_update('receiver_moved');
@@ -426,11 +545,11 @@ classdef sound_scene < handle
             if P.vsRot, R.update_SFS_renderers('virtual_source_rotated'); end
             if ~isempty(P.ls)
                 R.update_SFS_renderers('loudspeaker_moved');
-                for l = P.ls(:)', R.update_binaural_renderers('loudspeaker_moved', l); end
+                for l = obj.ssd_index(P.ls), R.update_binaural_renderers('loudspeaker_moved', l); end
             end
             if ~isempty(P.lsRot)
                 R.update_SFS_renderers('loudspeaker_rotated');
-                for l = P.lsRot(:)', R.update_binaural_renderers('loudspeaker_rotated', l); end
+                for l = obj.ssd_index(P.lsRot), R.update_binaural_renderers('loudspeaker_rotated', l); end
             end
             % rebuild the binaural BRIRs here, not inside the next audio block
             R.prepare_fast_path();

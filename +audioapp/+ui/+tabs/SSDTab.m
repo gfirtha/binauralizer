@@ -10,6 +10,14 @@
             BtnLoadGeom matlab.ui.control.UIControl   % NEW
     
             SetupLsnr event.listener   % <--- NEW
+            SpeakerLsnr event.listener
+            LstElem  matlab.ui.control.UIControl      % SSD loudspeakers (multi-select)
+            PopSpk   matlab.ui.control.UIControl      % designed loudspeaker models
+            TxtSpk   matlab.ui.control.UIControl
+        end
+
+        properties (Constant)
+            LoadEntry = 'Load from file...'
         end
     
         methods
@@ -20,61 +28,160 @@
                 obj.SetupLsnr = addlistener(obj.C, 'SetupChanged', @(~,~)obj.refreshFromSetup());
     
                 uicontrol(p,'Style','text','String','Geometry:',...
-                    'Units','normalized','Position',[0.07 0.85 0.30 0.08],...
+                    'Units','normalized','Position',[0.07 0.92 0.30 0.06],...
                     'HorizontalAlignment','left');
     
                 % add "General (from file)"
                 obj.PopGeom = uicontrol(p,'Style','popupmenu',...
                     'String',{'Linear','Circular','Stereo','5.0 (circular)','Atmos 5.1.4','Atmos 7.1.4','Soundbar (16 ch)','Genius Array','General'},...
                     'Value',obj.geomToVal(obj.C.Setup.Loudspeaker_setup.Shape),...
-                    'Units','normalized','Position',[0.40 0.85 0.50 0.08],...
+                    'Units','normalized','Position',[0.40 0.92 0.50 0.06],...
                     'Callback',@(s,~)obj.onGeometry(s),'UserData',1);
     
                 uicontrol(p,'Style','text','String','Size (R):',...
-                    'Units','normalized','Position',[0.07 0.72 0.30 0.08],...
+                    'Units','normalized','Position',[0.07 0.85 0.30 0.06],...
                     'HorizontalAlignment','left');
     
                 obj.EdtSize = uicontrol(p,'Style','edit',...
                     'String',num2str(obj.C.Setup.Loudspeaker_setup.R),...
-                    'Units','normalized','Position',[0.40 0.72 0.50 0.08],...
+                    'Units','normalized','Position',[0.40 0.85 0.50 0.06],...
                     'Callback',@(s,~)obj.onSize(s));
     
                 uicontrol(p,'Style','text','String','LS number (N):',...
-                    'Units','normalized','Position',[0.07 0.60 0.30 0.08],...
+                    'Units','normalized','Position',[0.07 0.78 0.30 0.06],...
                     'HorizontalAlignment','left');
     
                 obj.EdtNum = uicontrol(p,'Style','edit',...
                     'String',num2str(obj.C.Setup.Loudspeaker_setup.N),...
-                    'Units','normalized','Position',[0.40 0.60 0.50 0.08],...
+                    'Units','normalized','Position',[0.40 0.78 0.50 0.06],...
                     'Callback',@(s,~)obj.onNum(s));
     
                 uicontrol(p,'Style','text','String','Loudspeaker model:',...
-                    'Units','normalized','Position',[0.07 0.48 0.30 0.08],...
+                    'Units','normalized','Position',[0.07 0.71 0.30 0.06],...
                     'HorizontalAlignment','left');
     
                 obj.PopLSModel = uicontrol(p,'Style','popupmenu',...
                     'String',{'Point source','Piston'},...
                     'Value', 1 + strcmpi(obj.C.Setup.Loudspeaker_type.Shape,'circular_piston'),...
-                    'Units','normalized','Position',[0.40 0.48 0.50 0.08],...
+                    'Units','normalized','Position',[0.40 0.71 0.50 0.06],...
                     'Callback',@(s,~)obj.onLSModel(s));
     
                 uicontrol(p,'Style','text','String','LS radius (m):',...
-                    'Units','normalized','Position',[0.07 0.36 0.30 0.08],...
+                    'Units','normalized','Position',[0.07 0.64 0.30 0.06],...
                     'HorizontalAlignment','left');
     
                 obj.EdtLSRadius = uicontrol(p,'Style','edit',...
                     'String',num2str(obj.C.Setup.Loudspeaker_type.R),...
-                    'Units','normalized','Position',[0.40 0.36 0.50 0.08],...
+                    'Units','normalized','Position',[0.40 0.64 0.50 0.06],...
                     'Callback',@(s,~)obj.onLSRadius(s));
     
                 % NEW: Load geometry button (only visible for General)
                 obj.BtnLoadGeom = uicontrol(p,'Style','pushbutton','String','Load geometry ...',...
-                    'Units','normalized','Position',[0.40 0.26 0.50 0.08],...
+                    'Units','normalized','Position',[0.40 0.57 0.50 0.06],...
                     'Visible','off', ...
                     'Callback',@(s,~)obj.onLoadGeometry());
     
+                % Designed loudspeakers (Loudspeaker designer) on SSD elements
+                uicontrol(p,'Style','text','String','Designed loudspeakers on the SSD elements', ...
+                    'FontWeight','bold','Units','normalized','Position',[0.07 0.49 0.86 0.05], ...
+                    'HorizontalAlignment','left');
+                obj.LstElem = uicontrol(p,'Style','listbox','Max',2,'Min',0, ...
+                    'Units','normalized','Position',[0.07 0.03 0.48 0.45], ...
+                    'TooltipString','SSD loudspeakers (Ctrl / Shift: several)');
+                obj.PopSpk = uicontrol(p,'Style','popupmenu','String',{obj.LoadEntry}, ...
+                    'Units','normalized','Position',[0.58 0.41 0.35 0.06]);
+                uicontrol(p,'Style','pushbutton','String','Assign', ...
+                    'Units','normalized','Position',[0.58 0.33 0.35 0.06], ...
+                    'TooltipString',['One-driver model: one on every selected loudspeaker. ' ...
+                    'N-driver model: N selected loudspeakers become its drivers (in list order).'], ...
+                    'Callback',@(~,~)obj.onAssign());
+                uicontrol(p,'Style','pushbutton','String','Remove', ...
+                    'Units','normalized','Position',[0.58 0.26 0.35 0.06], ...
+                    'TooltipString','Plain loudspeakers again (the whole model of every selected one)', ...
+                    'Callback',@(~,~)obj.onRemoveSpeaker());
+                obj.TxtSpk = uicontrol(p,'Style','text','String','', ...
+                    'Units','normalized','Position',[0.58 0.03 0.35 0.22], ...
+                    'HorizontalAlignment','left','ForegroundColor',[0.1 0.3 0.6]);
+                obj.SpeakerLsnr = addlistener(obj.C, 'SpeakersChanged', @(~,~)obj.refreshSpeakers());
+                obj.refreshSpeakers();
+
                 % ensure proper visibility at startup
                 obj.updateGeneralButtonVisibility();
+            end
+
+            function refreshSpeakers(obj)
+                % element list (with the model each one is a driver of) and
+                % the available models
+                A = {};
+                try, A = obj.C.Scene.loudspeaker_array; catch, end
+                s = cell(numel(A), 1);
+                for e = 1:numel(A)
+                    l = A{e}; s{e} = sprintf('%d: ch %d  (%.2f, %.2f)', e, l.channelIndex, l.position(1), l.position(2));
+                    P = obj.C.placementOfElement(e);
+                    if ~isempty(P)
+                        s{e} = sprintf('%s  - %s', s{e}, P.Model.Name);
+                        if P.Model.nChannels > 1, s{e} = sprintf('%s [%d]', s{e}, find(P.Elements == e)); end
+                    end
+                end
+                v = get(obj.LstElem, 'Value'); v = v(v <= numel(s));
+                set(obj.LstElem, 'String', s, 'Value', v);
+                names = obj.C.speakerNames();
+                labels = cellfun(@(n) sprintf('%s (%d ch)', n, obj.C.Speakers(n).nChannels), names, 'UniformOutput', false);
+                cur = get(obj.PopSpk, 'Value');
+                set(obj.PopSpk, 'String', [reshape(labels, 1, []), {obj.LoadEntry}], 'UserData', names, ...
+                    'Value', min(cur, numel(names) + 1));
+            end
+
+            function onAssign(obj)
+                sel = get(obj.LstElem, 'Value');
+                if isempty(sel), obj.status('Select SSD loudspeakers first.'); return; end
+                names = get(obj.PopSpk, 'UserData'); v = get(obj.PopSpk, 'Value');
+                if v > numel(names)
+                    [f, pth] = uigetfile('*.mat', 'Designed loudspeaker (Loudspeaker designer file)', ...
+                        [audioapp.AppContext.speakerDir() filesep]);
+                    if isequal(f, 0), return; end
+                    try
+                        S = obj.C.loadSpeakerFile(fullfile(pth, f));
+                    catch ME
+                        errordlg(ME.message, 'Designed loudspeaker'); return;
+                    end
+                else
+                    S = obj.C.Speakers(names{v});
+                end
+                obj.assign(S, sel);
+            end
+
+            function assign(obj, S, sel)
+                % one-driver model: one on every loudspeaker in sel; an
+                % n-driver model: exactly n loudspeakers, driver k = sel(k)
+                n = S.nChannels;
+                try
+                    if n == 1
+                        for e = sel(:)', obj.C.placeSpeaker(S, e); end
+                        obj.status(sprintf('"%s" on %d loudspeaker(s).', S.Name, numel(sel)));
+                    elseif numel(sel) == n
+                        obj.C.placeSpeaker(S, sel);
+                        obj.status(sprintf('"%s": drivers 1..%d = loudspeakers %s.', S.Name, n, mat2str(sel)));
+                    else
+                        obj.status(sprintf('"%s" has %d drivers: select %d loudspeakers (%d selected).', ...
+                            S.Name, n, n, numel(sel)));
+                    end
+                catch ME
+                    obj.status(['Failed: ' ME.message]);
+                end
+                obj.refreshSpeakers();
+            end
+
+            function onRemoveSpeaker(obj)
+                for e = get(obj.LstElem, 'Value')
+                    P = obj.C.placementOfElement(e);
+                    if ~isempty(P), obj.C.removeSpeaker(P); end
+                end
+                obj.refreshSpeakers();
+            end
+
+            function status(obj, s)
+                set(obj.TxtSpk, 'String', s);
             end
     
             function refreshFromSetup(obj)
@@ -96,6 +203,7 @@
     
                 % show/hide the “Load geometry …” button
                 obj.updateGeneralButtonVisibility();
+                obj.refreshSpeakers();
             end
     
     

@@ -11,6 +11,7 @@ classdef listener_space_axes < handle
         receiver
         virtual_source_points
         loudspeaker_points
+        designed_speaker_points = {}   % shaded models of designed loudspeakers (sound_scene.speakers order)
         binaural_source_points
         renderer_illustration
         beamPolar = struct()
@@ -31,11 +32,19 @@ classdef listener_space_axes < handle
         simulatorHandle
 
         % Scene view: 'top' (edit x/y), 'rear' (behind the listener, edit
-        % x/height) or '3d' (oblique, mouse orbit). Heights live in the
+        % x/height), '3d' (oblique, mouse orbit) or 'listener' (first
+        % person: perspective camera in the listener's head; mouse look and
+        % the keys turn / walk the listener itself). Heights live in the
         % patches' z vertices; the side/3D views add screen-facing markers
         % and stems down to the ear plane (z = 0), built by refresh_view.
         ViewMode = 'top'
         Move3DFcn            % @(kind, idx, xyz), set by sound_scene
+        ReceiverMoveFcn      % @(xy, yawDeg), set by sound_scene (first-person walk / turn)
+        FpPitch = 0          % first person: camera pitch [deg] (the listener stays level)
+        FpFov = 75           % first person: camera view angle [deg]
+        FloorZ = -1.2        % first person: floor below the ear plane [m]
+        tv = []              % virtual TV: body patch, screen surface, size (show_tv)
+        ViewChangedFcn = []  % @(mode) after a view change (main window: menu, video output)
         marks = struct()
         ViewLims = struct()  % per view: {xlim, ylim, zlim, camera} when it was left
 
@@ -184,6 +193,7 @@ classdef listener_space_axes < handle
             dx = receiver_position(1:2) - obj.receiver.UserData.Origin;
             obj.receiver.UserData.Origin = obj.receiver.UserData.Origin + dx;
             obj.receiver.Vertices(:,1:2) = obj.receiver.Vertices(:,1:2) + dx;
+            if strcmp(obj.ViewMode, 'listener'), obj.apply_fp_camera(); end
         end
 
         function loudspeaker = draw_loudspeaker(obj,pos,R,orientation,idx)
@@ -200,6 +210,181 @@ classdef listener_space_axes < handle
             rotate(loudspeaker,[0 0 1], orientation,...
                 [loudspeaker.UserData.Origin(1),loudspeaker.UserData.Origin(2),0]);
             listener_space_axes.place_z(loudspeaker, pos);
+        end
+
+        function h = draw_designed_speaker(obj, model, pos, yaw, idx)
+            % Shaded 3D model of a designed loudspeaker (designed_loudspeaker
+            % Mesh, local frame: faces +x, origin = bounding-box centre) at
+            % pos, turned by yaw [deg]. The drag bookkeeping uses the vertex
+            % mean (UserData.Origin); UserData.Offset is the vertex mean in
+            % the model frame, so origin = Origin - Rz(yaw) Offset.
+            M = model.Mesh;
+            pos = [pos(:)', zeros(1, 3 - numel(pos))];
+            % lowest faces first: the top view draws without depth sorting
+            [~, o] = sort(M.V(M.F(:,1),3) + M.V(M.F(:,2),3) + M.V(M.F(:,3),3));
+            M.F = M.F(o,:); M.C = M.C(o,:);
+            h = patch(obj.main_axes, 'Faces', M.F, 'Vertices', obj.speaker_vertices(M.V, pos, yaw), ...
+                'FaceVertexCData', M.C, 'FaceColor', 'flat', 'EdgeColor', 'none', ...
+                'FaceLighting', 'none', 'Tag', sprintf('designed_speaker_%i', idx));
+            setappdata(h, 'BaseV', M.V);
+            h.UserData = struct('Label', idx, 'Origin', mean(h.Vertices(:,1:2), 1), ...
+                'Orientation', yaw, 'Z', pos(3), 'Offset', mean(M.V(:,1:2), 1), 'DisplayName', model.Name);
+            h.UserData.text = text(obj.main_axes, h.UserData.Origin(1) + 0.1, h.UserData.Origin(2) + 0.1, ...
+                pos(3) + max(M.V(:,3)), model.Name, 'Interpreter', 'none');
+            addlistener(h, 'ObjectBeingDestroyed', @(src,~) delete(src.UserData.text(isgraphics(src.UserData.text))));
+            obj.designed_speaker_points{idx} = h;
+        end
+
+        function place_designed_speaker(obj, idx, pos, yaw)
+            % Programmatic move / turn of a designed loudspeaker model
+            h = obj.designed_speaker_points{idx};
+            if ~isgraphics(h), return; end
+            pos = [pos(:)', zeros(1, 3 - numel(pos))];
+            h.Vertices = obj.speaker_vertices(getappdata(h, 'BaseV'), pos, yaw);
+            h.UserData.Origin = mean(h.Vertices(:,1:2), 1);
+            h.UserData.Orientation = yaw; h.UserData.Z = pos(3);
+            if isgraphics(h.UserData.text)
+                h.UserData.text.Position(1:2) = h.UserData.Origin + 0.1;
+            end
+        end
+
+        function remove_designed_speaker(obj, idx)
+            h = obj.designed_speaker_points{idx};
+            if isgraphics(h), delete(h); end
+            obj.designed_speaker_points(idx) = [];
+            for k = idx:numel(obj.designed_speaker_points)       % labels follow the list
+                if isgraphics(obj.designed_speaker_points{k})
+                    obj.designed_speaker_points{k}.UserData.Label = k;
+                end
+            end
+        end
+
+        % --- Virtual TV (video playback in the 3D / first-person views) ---
+        function show_tv(obj, tf)
+            % The TV appears with a loaded video: first time 2.5 m in front
+            % of the listener, facing it; then it keeps where it was put
+            if tf && isempty(obj.tv)
+                yaw = 90; xy = [0 0];
+                if ~isempty(obj.receiver) && isgraphics(obj.receiver)
+                    yaw = obj.receiver.UserData.Orientation; xy = obj.receiver.UserData.Origin;
+                end
+                obj.draw_tv(xy + 2.5*[cosd(yaw) sind(yaw)], yaw + 180, 65);
+            end
+            if isempty(obj.tv), return; end
+            obj.tv.visible = tf;
+            obj.ensure_tv();
+            set([obj.tv.body obj.tv.screen], 'Visible', matlab.lang.OnOffSwitchState(tf));
+        end
+
+        function ensure_tv(obj)
+            % a scene rebuild clears the axes: redraw the TV where it was
+            if ~isempty(obj.tv) && ~isgraphics(obj.tv.body)
+                obj.draw_tv(obj.tv.xy, obj.tv.yaw, obj.tv.diag, true);
+            end
+        end
+
+        function draw_tv(obj, xy, yaw, diagInch, noRefresh)
+            % TV body (draggable patch; double-click = screen size) and the
+            % screen (texture-mapped surface that follows the body)
+            old = obj.tv;
+            if ~isempty(old), delete([old.body(isgraphics(old.body)) old.screen(isgraphics(old.screen))]); end
+            d = diagInch*0.0254; w = d*16/sqrt(16^2 + 9^2); h = w*9/16;
+            G = scene_glyph.tv(w, h, obj.FloorZ);
+            body = patch(obj.main_axes, 'Faces', G.F, 'Vertices', obj.speaker_vertices(G.V, [xy 0], yaw), ...
+                'FaceVertexCData', G.C, 'FaceColor', 'flat', 'EdgeColor', 'none', ...
+                'FaceLighting', 'none', 'Tag', 'VirtualTV');
+            body.UserData = struct('Label', 0, 'Origin', mean(body.Vertices(:,1:2), 1), ...
+                'Orientation', yaw, 'Z', 0);
+            img = zeros(9, 16, 3, 'uint8'); vis = true; locked = false;
+            if ~isempty(old), img = old.img; vis = old.visible; locked = old.locked; end
+            scr = surface(obj.main_axes, zeros(2), zeros(2), zeros(2), img, 'FaceColor', 'texturemap', ...
+                'EdgeColor', 'none', 'CDataMapping', 'direct', 'FaceLighting', 'none', ...
+                'HitTest', 'off', 'PickableParts', 'none', 'Tag', 'VirtualTVScreen');
+            set([body scr], 'Visible', matlab.lang.OnOffSwitchState(vis));
+            obj.tv = struct('body', body, 'screen', scr, 'w', w, 'h', h, 'diag', diagInch, ...
+                'local', G.screen, 'locked', locked, 'visible', vis, 'img', img, 'xy', xy, 'yaw', yaw);
+            draggable(body, @(~) obj.tv_follow(), @(~) obj.tv_follow());
+            setappdata(body, 'user_dblclickfcn', @(~) obj.ask_tv_size());
+            obj.tv_follow();
+            obj.tv_interaction();
+            if (nargin < 5 || ~noRefresh) && ~strcmp(obj.ViewMode, 'top'), obj.refresh_view(false); end
+        end
+
+        function tv_follow(obj)
+            % screen corners from the body pose (row 1 = top; texturemap puts
+            % image column 1 on the surface's last column, so column 1 = the
+            % right edge as seen from the front)
+            T = obj.tv; yaw = T.body.UserData.Orientation;
+            obj.tv.xy = T.body.UserData.Origin; obj.tv.yaw = yaw;
+            c = [T.body.UserData.Origin 0] + T.local*[cosd(yaw) sind(yaw) 0; -sind(yaw) cosd(yaw) 0; 0 0 1];
+            r = [sind(yaw), -cosd(yaw), 0];          % the viewer's right
+            L = c - r*T.w/2; R = c + r*T.w/2;
+            set(T.screen, 'XData', [R(1) L(1); R(1) L(1)], 'YData', [R(2) L(2); R(2) L(2)], ...
+                'ZData', T.h/2*[1 1; -1 -1]);
+        end
+
+        function ask_tv_size(obj)
+            a = inputdlg('Screen diagonal [inch]:', 'Virtual TV', 1, {num2str(obj.tv.diag)});
+            v = str2double(a);
+            if isempty(a) || ~isfinite(v) || v < 10 || v > 200, return; end
+            obj.draw_tv(obj.tv.body.UserData.Origin, obj.tv.body.UserData.Orientation, v);
+        end
+
+        function set_tv_image(obj, img)
+            % img: still (idle) or current video frame
+            if isempty(obj.tv), return; end
+            obj.tv.img = img;
+            obj.ensure_tv();
+            obj.tv.screen.CData = img;
+        end
+
+        function tf = tv_on_screen(obj)
+            % TV visible to the user: shown, and the scene tab is on top
+            tf = ~isempty(obj.tv) && isgraphics(obj.tv.screen) && strcmp(obj.tv.screen.Visible, 'on');
+            if tf
+                tab = ancestor(obj.main_axes, 'uitab');
+                tf = isempty(tab) || isequal(tab.Parent.SelectedTab, tab);
+            end
+        end
+
+        function set_tv_locked(obj, tf)
+            % during playback the TV stays where it is
+            if isempty(obj.tv), return; end
+            obj.tv.locked = tf;
+            obj.tv_interaction();
+        end
+
+        function tv_interaction(obj)
+            % top view and not playing: drag (left) / turn (right) / size
+            % (double-click); otherwise clicks go to the view navigation
+            if isempty(obj.tv) || ~isgraphics(obj.tv.body), return; end
+            b = obj.tv.body;
+            if ~isappdata(b, 'topButtonDownFcn'), setappdata(b, 'topButtonDownFcn', b.ButtonDownFcn); end
+            if strcmp(obj.ViewMode, 'top') && ~obj.tv.locked
+                b.ButtonDownFcn = getappdata(b, 'topButtonDownFcn');
+            else
+                b.ButtonDownFcn = @(~,~) obj.on_background_press();
+            end
+        end
+
+        function set_object_hidden(obj, kind, k, tf)
+            % Hide / show a virtual source ('vs') or loudspeaker ('ls') icon
+            % (and its label, marker): drivers of a designed loudspeaker
+            % are drawn by the model
+            if strcmp(kind, 'vs'), L = obj.virtual_source_points; else, L = obj.loudspeaker_points; end
+            if k > numel(L) || isempty(L{k}) || ~isgraphics(L{k}), return; end
+            h = L{k};
+            on = matlab.lang.OnOffSwitchState(~tf);
+            if strcmp(kind, 'vs')
+                setappdata(h, 'objVisible', ~tf);
+                h.Visible = matlab.lang.OnOffSwitchState(~tf && strcmp(obj.ViewMode, 'top'));
+                if isfield(obj.marks, 'vs') && k <= numel(obj.marks.vs) && isgraphics(obj.marks.vs(k).mk)
+                    set([obj.marks.vs(k).mk, obj.marks.vs(k).stem], 'Visible', on);
+                end
+            else
+                h.Visible = on;
+            end
+            if isfield(h.UserData, 'text') && isgraphics(h.UserData.text), h.UserData.text.Visible = on; end
         end
 
         function virtual_source = draw_virtual_source(obj,pos,orientation,idx,displayName)
@@ -324,6 +509,11 @@ classdef listener_space_axes < handle
             % the horizontal axes facing the camera); 3D view: camera zoom.
             ax = obj.main_axes;
             obj.zoomFactor = obj.zoomFactor .* factor;
+            if strcmp(obj.ViewMode, 'listener')     % first person: field of view
+                obj.FpFov = min(110, max(15, obj.FpFov*factor));
+                camva(ax, obj.FpFov);
+                return;
+            end
             if strcmp(obj.ViewMode, '3d')
                 camzoom(ax, 1/factor);
                 return;
@@ -549,7 +739,18 @@ classdef listener_space_axes < handle
             if isprop(obj,'simulatorHandle') && ~isempty(obj.simulatorHandle) && isvalid(obj.simulatorHandle)
                 obj.simulatorHandle.refreshRendererCopies();
             end
-            set(ax,'SortMethod','childorder');
+            obj.apply_sort_method();
+        end
+
+        function apply_sort_method(obj)
+            % top view: layers by child order (flat overlays); side / 3D /
+            % first-person views: depth test (else the TV, loudspeakers and
+            % labels are drawn in list order, behind ones over the screen)
+            if strcmp(obj.ViewMode, 'top')
+                obj.main_axes.SortMethod = 'childorder';
+            else
+                obj.main_axes.SortMethod = 'depth';
+            end
         end
 
         function set_beam_polar_visible(obj, tf)
@@ -637,7 +838,9 @@ classdef listener_space_axes < handle
                 obj.ViewLims.(obj.view_key(obj.ViewMode)) = {xlim(ax), ylim(ax), zlim(ax), cam};
             end
             obj.ViewMode = mode;
+            if strcmp(mode, 'listener'), obj.install_key_nav(); end
             obj.refresh_view(true);
+            if ~isempty(obj.ViewChangedFcn), obj.ViewChangedFcn(mode); end
         end
 
         function refresh_view(obj, restore)
@@ -649,6 +852,7 @@ classdef listener_space_axes < handle
             if nargin < 2, restore = false; end
             ax = obj.main_axes;
             if isempty(ax) || ~isgraphics(ax), return; end
+            obj.ensure_tv();
             obj.delete_marks();
             mode = obj.ViewMode;
             top = strcmp(mode, 'top');
@@ -681,15 +885,30 @@ classdef listener_space_axes < handle
                         h.PickableParts = 'visible';
                 end
             end
+            for k = 1:numel(obj.designed_speaker_points)
+                h = obj.designed_speaker_points{k};
+                if isempty(h) || ~isgraphics(h), continue; end
+                if ~isappdata(h, 'topButtonDownFcn')
+                    setappdata(h, 'topButtonDownFcn', h.ButtonDownFcn);
+                end
+                switch mode
+                    case 'top',  h.ButtonDownFcn = getappdata(h, 'topButtonDownFcn');
+                    case 'rear', h.ButtonDownFcn = @(src,~) obj.start_side_drag('ds', src.UserData.Label);
+                    otherwise,   h.ButtonDownFcn = @(src,~) obj.on_press_3d(src);
+                end
+            end
+            fp = strcmp(mode, 'listener');
             if ~isempty(obj.receiver) && isgraphics(obj.receiver)
                 if ~top, obj.receiver.PickableParts = 'none'; else, obj.receiver.PickableParts = 'visible'; end
+                obj.receiver.Visible = matlab.lang.OnOffSwitchState(~fp);   % first person: we are the head
             end
             ax.ButtonDownFcn = @(~,~) obj.on_background_press();
+            obj.tv_interaction();
             obj.passthrough_overlays();
             obj.stack_overlays();
             % drop 3D camera zoom/pan before applying the new view
             set(ax, 'CameraPositionMode', 'auto', 'CameraTargetMode', 'auto', ...
-                'CameraViewAngleMode', 'auto', 'CameraUpVectorMode', 'auto');
+                'CameraViewAngleMode', 'auto', 'CameraUpVectorMode', 'auto', 'Projection', 'orthographic');
             if top
                 view(ax, 2);
                 zlim(ax, 'auto');
@@ -725,6 +944,12 @@ classdef listener_space_axes < handle
                     view(ax, az, 0);
                 case '3d'
                     view(ax, az + 37.5, 30);       % from behind-right of the listener
+                case 'listener'
+                    % the camera follows the listener, not a stored camera
+                    zl = zlim(ax); zlim(ax, [min(zl(1), obj.FloorZ - 0.05), zl(2)]);
+                    obj.apply_fp_camera();
+                    obj.positionZoomPanel();
+                    return;
             end
             if restore && isfield(obj.ViewLims, key) && numel(obj.ViewLims.(key)) >= 4
                 % where this view's camera was left (orbit, pan, zoom)
@@ -760,7 +985,7 @@ classdef listener_space_axes < handle
             ov = kids(~ismember(kids, scene) & ...
                 ~arrayfun(@(h) strcmp(h.Tag, 'EarPlane') || isa(h, 'matlab.graphics.primitive.Text'), kids));
             n = numel(ov);
-            vis = ~strcmp(obj.ViewMode, 'rear');    % edge-on in the rear view
+            vis = ~any(strcmp(obj.ViewMode, {'rear', 'listener'}));   % edge-on in the rear / first-person view
             for k = 1:n
                 t = hgtransform('Parent', ax, 'Tag', 'OverlayLift', ...
                     'HitTest', 'off', 'PickableParts', 'none', 'Visible', vis, ...
@@ -771,7 +996,8 @@ classdef listener_space_axes < handle
 
         function h = scene_handles(obj)
             % Graphics of the scene objects (not renderer overlays)
-            c = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', {obj.receiver}];
+            c = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', obj.designed_speaker_points(:)', {obj.receiver}];
+            if ~isempty(obj.tv), c = [c, {obj.tv.body, obj.tv.screen}]; end
             c = c(cellfun(@(x) ~isempty(x) && isgraphics(x), c));
             h = [c{:}];
             if isempty(h), h = gobjects(0); end
@@ -799,9 +1025,11 @@ classdef listener_space_axes < handle
             try
                 % top-most first: virtual sources, loudspeakers, receiver
                 % (the order the former uistack sequence produced)
-                scene = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', {obj.receiver}];
+                scene = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', obj.designed_speaker_points(:)', {obj.receiver}];
+                if ~isempty(obj.tv), scene = [scene, {obj.tv.screen, obj.tv.body}]; end
                 % with the source labels
-                lbl = cellfun(@(h) listener_space_axes.label_of(h), obj.virtual_source_points(:)', 'UniformOutput', false);
+                lbl = cellfun(@(h) listener_space_axes.label_of(h), ...
+                    [obj.virtual_source_points(:)', obj.designed_speaker_points(:)'], 'UniformOutput', false);
                 scene = [lbl, scene];
                 scene = scene(cellfun(@(h) ~isempty(h) && isgraphics(h) && ...
                     isequal(h.Parent, obj.main_axes), scene));
@@ -862,6 +1090,11 @@ classdef listener_space_axes < handle
             end
             obj.loudspeaker_points = {};
 
+            for n = 1:numel(obj.designed_speaker_points)
+                if isgraphics(obj.designed_speaker_points{n}), delete(obj.designed_speaker_points{n}); end
+            end
+            obj.designed_speaker_points = {};
+
             if ~isempty(obj.binaural_source_points)
                 for n = 1:numel(obj.binaural_source_points)
                     if isgraphics(obj.binaural_source_points{n}), delete(obj.binaural_source_points{n}); end
@@ -918,7 +1151,7 @@ classdef listener_space_axes < handle
                     'MarkerEdgeColor', 'k', 'Visible', vis, ...
                     'ButtonDownFcn', @(~,~) obj.start_side_drag('vs', k));
             end
-            ls = obj.loudspeaker_points(cellfun(@(h) ~isempty(h) && isgraphics(h), obj.loudspeaker_points));
+            ls = obj.loudspeaker_points(cellfun(@(h) ~isempty(h) && isgraphics(h) && strcmp(h.Visible, 'on'), obj.loudspeaker_points));
             if ~isempty(ls)
                 P = cell2mat(cellfun(@(h) obj.patch_pos(h), ls(:), 'UniformOutput', false));
                 M.lsStem = line(ax, obj.stem_data(P(:,1)), obj.stem_data(P(:,2)), ...
@@ -931,6 +1164,11 @@ classdef listener_space_axes < handle
                 M.plane = patch(ax, xl([1 2 2 1]), yl([1 1 2 2]), -0.002*[1 1 1 1], [0.8 0.88 1], ...
                     'FaceAlpha', 0.25, 'EdgeColor', 'none', 'HitTest', 'off', ...
                     'PickableParts', 'none', 'Tag', 'EarPlane');
+            elseif strcmp(obj.ViewMode, 'listener')
+                % first person: a floor for depth (the ear plane is edge-on)
+                xl = xlim(ax); yl = ylim(ax);
+                M.plane = patch(ax, xl([1 2 2 1]), yl([1 1 2 2]), obj.FloorZ*[1 1 1 1], [0.86 0.86 0.84], ...
+                    'EdgeColor', 'none', 'HitTest', 'off', 'PickableParts', 'none', 'Tag', 'EarPlane');
             end
             obj.marks = M;
         end
@@ -969,7 +1207,7 @@ classdef listener_space_axes < handle
             % Limits around every scene object (+ margin), at least the
             % listener's +-1.5 m neighbourhood
             ax = obj.main_axes;
-            scene = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', {obj.receiver}];
+            scene = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', obj.designed_speaker_points(:)', {obj.receiver}];
             P = [0 0 0];
             for k = 1:numel(scene)
                 if ~isempty(scene{k}) && isgraphics(scene{k})
@@ -985,7 +1223,7 @@ classdef listener_space_axes < handle
         end
 
         function zl = z_range(obj)
-            scene = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', {obj.receiver}];
+            scene = [obj.virtual_source_points(:)', obj.loudspeaker_points(:)', obj.designed_speaker_points(:)', {obj.receiver}];
             z = 0;
             for k = 1:numel(scene)
                 if ~isempty(scene{k}) && isgraphics(scene{k})
@@ -1016,6 +1254,8 @@ classdef listener_space_axes < handle
             if strcmp(kind, 'ls')
                 h = obj.loudspeaker_points{idx};
                 j = find(obj.marks.lsLabels == idx, 1);
+            elseif strcmp(kind, 'ds')
+                h = obj.designed_speaker_points{idx};
             else
                 h = obj.virtual_source_points{idx};
             end
@@ -1031,9 +1271,13 @@ classdef listener_space_axes < handle
                 p = p0 + d;
                 obj.set_patch_pos(h, p);
                 if strcmp(kind, 'ls')
-                    st = obj.marks.lsStem;
-                    st.XData(3*j-2:3*j-1) = p(1); st.YData(3*j-2:3*j-1) = p(2);
-                    st.ZData(3*j-1) = p(3);
+                    if ~isempty(j)
+                        st = obj.marks.lsStem;
+                        st.XData(3*j-2:3*j-1) = p(1); st.YData(3*j-2:3*j-1) = p(2);
+                        st.ZData(3*j-1) = p(3);
+                    end
+                elseif strcmp(kind, 'ds')
+                    % the model itself is the marker
                 else
                     obj.update_vs_mark(idx, p);
                 end
@@ -1092,6 +1336,10 @@ classdef listener_space_axes < handle
                 return;                          % e.g. a trajectory point was placed
             end
             fig = ancestor(obj.main_axes, 'figure');
+            if strcmp(obj.ViewMode, 'listener')
+                if any(strcmp(fig.SelectionType, {'normal', 'extend'})), obj.start_look(); end
+                return;
+            end
             switch fig.SelectionType
                 case 'normal'
                     if strcmp(obj.ViewMode, '3d')
@@ -1106,6 +1354,95 @@ classdef listener_space_axes < handle
                         obj.start_pan();
                     end
             end
+        end
+
+        % --- First person ('listener' view) ---
+        function apply_fp_camera(obj)
+            % perspective camera in the listener's head, looking where the
+            % listener faces (+ the camera-only pitch)
+            ax = obj.main_axes;
+            if isempty(obj.receiver) || ~isgraphics(obj.receiver) || ~isgraphics(ax), return; end
+            p = obj.patch_pos(obj.receiver) + [0 0 0.05];          % eyes slightly above the ears
+            yaw = obj.receiver.UserData.Orientation;
+            d = [cosd(yaw)*cosd(obj.FpPitch), sind(yaw)*cosd(obj.FpPitch), sind(obj.FpPitch)];
+            set(ax, 'Projection', 'perspective', 'CameraPosition', p, 'CameraTarget', p + d, ...
+                'CameraUpVector', [0 0 1], 'CameraViewAngle', obj.FpFov);
+        end
+
+        function fp_move(obj, fwd, side, dyaw)
+            % walk fwd / side [m] (in the facing direction) and turn by dyaw
+            % [deg]: the listener itself moves (renderers follow)
+            if isempty(obj.receiver) || ~isgraphics(obj.receiver), return; end
+            yaw = obj.receiver.UserData.Orientation + dyaw;
+            xy = obj.receiver.UserData.Origin + fwd*[cosd(yaw), sind(yaw)] + side*[sind(yaw), -cosd(yaw)];
+            if ~isempty(obj.ReceiverMoveFcn)
+                obj.ReceiverMoveFcn(xy, yaw);      % -> update_receiver -> camera
+            else
+                obj.update_receiver(xy, [cosd(yaw), sind(yaw)]);
+            end
+        end
+
+        function start_look(obj)
+            % drag: sideways turns the listener, up/down tilts the camera
+            ax = obj.main_axes;
+            fig = ancestor(ax, 'figure');
+            pLast = get(0, 'PointerLocation');
+            prevMotion = fig.WindowButtonMotionFcn;
+            prevUp = fig.WindowButtonUpFcn;
+            fig.WindowButtonMotionFcn = @(~,~) look();
+            fig.WindowButtonUpFcn = @(~,~) stop();
+
+            function look()
+                p = get(0, 'PointerLocation');
+                d = p - pLast; pLast = p;
+                s = 0.25*obj.FpFov/75;             % deg per pixel, finer when zoomed in
+                obj.FpPitch = min(80, max(-80, obj.FpPitch + s*d(2)));
+                if d(1) ~= 0
+                    obj.fp_move(0, 0, -s*d(1));    % drag right -> look right
+                else
+                    obj.apply_fp_camera();
+                end
+            end
+            function stop()
+                fig.WindowButtonMotionFcn = prevMotion;
+                fig.WindowButtonUpFcn = prevUp;
+            end
+        end
+
+        function install_key_nav(obj)
+            % first person keys (chained in front of the figure's key
+            % handler, e.g. the transport's space = play / pause):
+            % W/S forward / back, A/D sideways, arrows turn / tilt, R level
+            fig = ancestor(obj.main_axes, 'figure');
+            if isempty(fig) || isappdata(fig, 'SceneKeyNav'), return; end
+            prev = fig.WindowKeyPressFcn;
+            fig.WindowKeyPressFcn = @(f, e) obj.on_key(f, e, prev);
+            setappdata(fig, 'SceneKeyNav', true);
+        end
+
+        function on_key(obj, fig, evt, prev)
+            used = false;
+            if strcmp(obj.ViewMode, 'listener') && isgraphics(obj.main_axes) && ...
+                    ~isa(fig.CurrentObject, 'matlab.ui.control.UIControl')
+                tab = ancestor(obj.main_axes, 'uitab');
+                if isempty(tab) || isequal(tab.Parent.SelectedTab, tab)
+                    st = 0.1; tr = 5;              % step [m], turn [deg]
+                    used = true;
+                    switch evt.Key
+                        case 'w',          obj.fp_move(st, 0, 0);
+                        case 's',          obj.fp_move(-st, 0, 0);
+                        case 'a',          obj.fp_move(0, -st, 0);
+                        case 'd',          obj.fp_move(0, st, 0);
+                        case 'leftarrow',  obj.fp_move(0, 0, tr);
+                        case 'rightarrow', obj.fp_move(0, 0, -tr);
+                        case 'uparrow',    obj.FpPitch = min(80, obj.FpPitch + tr); obj.apply_fp_camera();
+                        case 'downarrow',  obj.FpPitch = max(-80, obj.FpPitch - tr); obj.apply_fp_camera();
+                        case 'r',          obj.FpPitch = 0; obj.FpFov = 75; obj.apply_fp_camera();
+                        otherwise,         used = false;
+                    end
+                end
+            end
+            if ~used && ~isempty(prev), feval(prev, fig, evt); end
         end
 
         function start_pan3d(obj)
@@ -1210,7 +1547,7 @@ classdef listener_space_axes < handle
                 catch
                 end
                 obj.renderer_illustration.layers = L;
-                set(ax,'SortMethod','childorder');
+                obj.apply_sort_method();
                 set(ancestor(ax,'figure'),'Renderer','opengl','GraphicsSmoothing','off');
             else
                 L = obj.renderer_illustration.layers;
@@ -1293,6 +1630,12 @@ classdef listener_space_axes < handle
             if ~isempty(h) && isgraphics(h) && isfield(h.UserData, 'text')
                 t = h.UserData.text;
             end
+        end
+
+        function V = speaker_vertices(V0, pos, yaw)
+            % model vertices (local) turned by yaw about z and moved to pos
+            Rz = [cosd(yaw) -sind(yaw) 0; sind(yaw) cosd(yaw) 0; 0 0 1];
+            V = V0*Rz' + pos;
         end
 
         function place_z(h, pos)
