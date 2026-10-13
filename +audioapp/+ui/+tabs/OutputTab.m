@@ -1,12 +1,11 @@
 classdef OutputTab < handle
-    % Output settings: Binauralization toggle, Load HRTF, device picker,
-    % device info, block size slider. Uses AudioEngine as the single owner
+    % Output settings: the "Binaural & headphones" tab (binauralization,
+    % HRTF set, headphone EQ, level: HeadphoneLevelPanel) and "Device & EQ"
+    % (device picker, device info, block size slider, master EQ). Uses AudioEngine as the single owner
     % of the audioDeviceWriter.
     properties
         C
         Panel
-        TglBinaural   matlab.ui.control.UIControl
-        BtnLoadHRTF   matlab.ui.control.UIControl
         PopOutputDev  matlab.ui.control.UIControl
         TxtDevName    matlab.ui.control.UIControl
         TxtMaxCh      matlab.ui.control.UIControl
@@ -18,12 +17,18 @@ classdef OutputTab < handle
         TxtDecor      matlab.ui.control.UIControl % <-- New Property
         EQPanel   audioapp.ui.controls.MasterEQPanel
         PopDriver   matlab.ui.control.UIControl
+        HpPanel     audioapp.ui.controls.HeadphoneLevelPanel   % "Headphones & level" sub-tab
     end
 
     methods
         function obj = OutputTab(parentTab, ctx)
             obj.C = ctx;
-            obj.Panel = parentTab;
+            % two sub-tabs: the device / EQ settings and the headphones,
+            % ear (HRTF) and calibrated playback level
+            tg = uitabgroup(parentTab, 'Units', 'normalized', 'Position', [0 0 1 1]);
+            tHp = uitab(tg, 'Title', 'Binaural & headphones');      % binauralization, HRTF, headphone EQ, level
+            tDev = uitab(tg, 'Title', 'Device & EQ');
+            obj.Panel = tDev;
             % Make sure the engine (and thus the output device) exists
             obj.C.ensureEngine();
             obj.C.Engine.refreshOutput();
@@ -33,18 +38,9 @@ classdef OutputTab < handle
             h = 0.05;    % Standard height for most controls
             y = 0.98;    % Current vertical top position
 
-            % --- Binauralization + Load HRTF ------------------------------------------------
-            y = y - h;
-            obj.TglBinaural = uicontrol(p,'Style','radiobutton','String','Binauralization',...
-                'Units','normalized','Position',[0.07 y 0.40 h],...
-                'FontSize',10,'Value',obj.C.Setup.Binauralization,...
-                'Callback',@(s,~)obj.onBinauralization(s));
-            obj.BtnLoadHRTF = uicontrol(p,'Style','pushbutton','String','Load HRTF',...
-                'Units','normalized','Position',[0.52 y 0.40 h],...
-                'FontSize',10,'Callback',@(~,~)obj.onLoadHRTF());
+            % (binauralization and the HRTF set: the "Binaural & headphones" tab)
 
             % --- Device picker ---------------------------------------------------------------
-            y = y - h - 0.02; % Section gap
             uicontrol(p,'Style','text','String','Select audio output device:',...
                 'Units','normalized','Position',[0.07 y 0.86 h],...
                 'HorizontalAlignment','left','FontSize',10);
@@ -156,35 +152,62 @@ classdef OutputTab < handle
             % Master EQ panel (bottom)
             obj.C.ensureEngine();
             obj.EQPanel = audioapp.ui.controls.MasterEQPanel(obj.Panel, obj.C);
+            obj.HpPanel = audioapp.ui.controls.HeadphoneLevelPanel(tHp, obj.C);
+            obj.HpPanel.SwitchTo = @(n) obj.switchToDevice(n);
+            obj.HpPanel.SetBinaural = @(on) obj.setBinauralization(on);
+            obj.detectHeadphone();
+        end
+
+        function ok = switchToDevice(obj, name)
+            % the output to the device name (the list refreshed: it may have
+            % been connected just now); false when it is not an output
+            ok = false;
+            if ~obj.C.HasAudio, return; end
+            L = obj.C.Engine.getOutputDevices(); cur = obj.C.Engine.getCurrentDeviceName();
+            if ~any(strcmp(L, cur)), L = [{cur} L]; end
+            set(obj.PopOutputDev, 'String', L);
+            k = find(strcmp(L, name), 1);
+            if isempty(k), obj.updateDeviceInfo(); return; end
+            set(obj.PopOutputDev, 'Value', k); obj.onSelectOutputDevice(obj.PopOutputDev);
+            ok = true;
+        end
+
+        function detectHeadphone(obj)
+            % a recognised headphone (Bluetooth / USB, AutoEq model name):
+            % binaural output on the system default -> the headphone's own
+            % output device is selected; its measurement + EQ (HpPanel)
+            if ~obj.C.HasAudio, return; end
+            cur = obj.C.Engine.getCurrentDeviceName();
+            if obj.HpPanel.autoDetect(cur), return; end
+            if ~obj.C.Setup.Binauralization || ~any(strcmpi(cur, {'Default', '(system default)'})), return; end
+            try
+                T = headphone_db.index();
+            catch
+                return;
+            end
+            L = get(obj.PopOutputDev, 'String');
+            for k = 1:numel(L)
+                if ~isempty(headphone_db.match(T, L{k}))
+                    set(obj.PopOutputDev, 'Value', k); obj.onSelectOutputDevice(obj.PopOutputDev);   % -> autoDetect
+                    return;
+                end
+            end
         end
 
         % =================================================================
         % Callbacks
         % =================================================================
 
-        function onLoadHRTF(obj)
-            startDir = fullfile(pwd,'Data','HRTFs');
-            [file,path] = uigetfile(fullfile('HRTFs','*.sofa'),'Select SOFA file',startDir);
-            if isequal(file,0), return; end
-            sofa = SOFAload(fullfile(path,file));
-            obj.C.Setup.HRTF = sofa;
-            fs = sofa.Data.SamplingRate;
-            obj.C.Setup.SampleRate = fs;
-            % Reconfigure hardware & scene to the new Fs
-            obj.C.ensureEngine();
-            obj.C.Engine.refreshOutput();             % applies Fs/Blk to device
-            obj.C.rebuildSoundScene();
-            obj.updateDeviceInfo();
-        end
-
-        function onBinauralization(obj, src)
-            wantOn = logical(get(src,'Value'));   % 1=on (binaural), 0=off (multichannel)
+        function on = setBinauralization(obj, wantOn)
+            % on (binaural) / off (multichannel): off needs the scene's
+            % loudspeaker channels on the device; returns the state set
+            on = wantOn;
             if ~wantOn
                 req   = obj.requiredSpeakerChannels();
                 info  = obj.C.Engine.getCurrentDeviceInfo();
                 avail = info.MaxOutputChannels;
                 if isnan(avail) || avail < req
-                    set(src,'Value',1);
+                    on = true;
                     obj.C.Setup.Binauralization = true;
                     warndlg(sprintf(['Not enough output channels on the selected device.\n\n' ...
                         'Required (speakers in scene): %d\nAvailable on device: %d\n\n' ...
@@ -230,6 +253,7 @@ classdef OutputTab < handle
             obj.C.ensureEngine();
             obj.C.Engine.setOutputDevice(newDev);
             obj.updateDeviceInfo();
+            if ~isempty(obj.HpPanel), obj.HpPanel.autoDetect(newDev); end
         end
 
         function onBlockSize(obj, src)

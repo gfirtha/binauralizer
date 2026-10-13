@@ -7,7 +7,12 @@ classdef App < handle
     methods
         function obj = App()
             addpath(pwd);              % your paths, install(), etc. if needed
-            install;
+            % the app's own Files/install.m by its full path: another
+            % install.m on the path (e.g. NiHu's, which also calls savepath
+            % and opens its demo in the help browser) must not run instead.
+            % Its content runs here (not run(), which changes into Files/
+            % and breaks its relative paths).
+            eval(fileread(fullfile(fileparts(fileparts(mfilename('fullpath'))), 'Files', 'install.m')));
             % Object-based (Atmos) input runs Cavern in a helper process
             try
                 cavern_reader.serverPath();

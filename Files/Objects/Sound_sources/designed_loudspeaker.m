@@ -109,17 +109,22 @@ classdef designed_loudspeaker < handle
             Gs = obj.direction(k, dk);
             r = norm(x);
             if ~obj.hasSH() || r < obj.SH.a, return; end
+            % all frequencies at once: the angular part once, the radial
+            % ratios h_n(kr)/h_n(k r0) by the upward recursion (radialAll),
+            % one product - a few ms per point instead of a besselh call per
+            % order and frequency
             S = obj.SH; fv = obj.f(:);
-            Y = getSpherHarmMx(acos(x(3)/r), atan2(x(2), x(1)), S.Nmax, 'complex');
-            rk = norm(dk);
-            w = obj.shWeight(fv);
-            for m = find(w > 0)'
-                N = S.N(m); kk = 2*pi*fv(m)/obj.c0;
-                [hr, nIdx] = obj.radial(N, kk, r, S.r0);
-                p = Y(1:(N+1)^2)*(S.B(1:(N+1)^2, k, m).*hr(nIdx));
-                Gsh = p*4*pi*rk*exp(1i*kk*rk);
-                Gs(m) = w(m)*Gsh + (1 - w(m))*Gs(m);
-            end
+            w = obj.shWeight(fv); ms = find(w > 0);
+            if isempty(ms), return; end
+            Y = designed_loudspeaker.shRow(acos(x(3)/r), atan2(x(2), x(1)), S.Nmax);
+            rk = norm(dk); kv = 2*pi*fv(ms).'/obj.c0;
+            L = (S.Nmax + 1)^2; nIdx = floor(sqrt(0:L - 1))' + 1;
+            HR = designed_loudspeaker.radialAll(S.Nmax, kv, r, S.r0);
+            Bk = reshape(S.B(1:L, k, ms), L, numel(ms));
+            Nm = S.N(ms); mask = (nIdx - 1) <= Nm(:).';
+            p = Y(1:L)*(Bk.*HR(nIdx, :).*mask);
+            Gsh = (p.*4*pi*rk.*exp(1i*kv*rk)).';
+            Gs(ms) = w(ms).*Gsh + (1 - w(ms)).*Gs(ms);
         end
 
         function p = field(obj, k, X, f0)
@@ -270,6 +275,47 @@ classdef designed_loudspeaker < handle
             end
             fTop = max([0; f(N > 0)]);
             S = struct('B', B, 'N', N, 'Nmax', Nmax, 'r0', r0, 'a', a, 'fTop', fTop, 'residual', res);
+        end
+
+        function Y = shRow(th, ph, N)
+            % [1 x (N+1)^2] complex spherical harmonics at one direction, the
+            % convention and column order of getSpherHarmMx ('complex':
+            % (-1)^m sqrt((2n+1)/(4 pi) (n-|m|)!/(n+|m|)!) P_n^|m| e^{i m ph},
+            % P with the Condon-Shortley phase) by the normalised Legendre
+            % recursion - no factorials, ~50x faster
+            x = cos(th); sn = sin(th);
+            P = zeros(N + 1, N + 1);                       % P(n+1, m+1): normalised, CS phase
+            P(1, 1) = 1/sqrt(4*pi);
+            for m = 1:N, P(m+1, m+1) = -sqrt((2*m + 1)/(2*m))*sn*P(m, m); end
+            for m = 0:N - 1, P(m+2, m+1) = sqrt(2*m + 3)*x*P(m+1, m+1); end
+            for m = 0:N
+                for n = m + 2:N
+                    a = sqrt((4*n^2 - 1)/(n^2 - m^2)); b = sqrt(((n - 1)^2 - m^2)/(4*(n - 1)^2 - 1));
+                    P(n+1, m+1) = a*(x*P(n, m+1) - b*P(n-1, m+1));
+                end
+            end
+            Y = zeros(1, (N + 1)^2);
+            for n = 0:N
+                m = -n:n;
+                Y(n^2 + n + m + 1) = (-1).^m.*P(n+1, abs(m) + 1).*exp(1i*ph*m);
+            end
+        end
+
+        function HR = radialAll(N, kv, r, r0)
+            % [N+1 x nk] h_n(k r)/h_n(k r0) (spherical Hankel, 2nd kind),
+            % n = 0..N, all wavenumbers kv at once: h_0 = i e^{-ix}/x,
+            % h_1 = e^{-ix}(i/x^2 - 1/x), h_{n+1} = (2n+1)/x h_n - h_{n-1}
+            % (stable upward for the Hankel functions)
+            HR = designed_loudspeaker.sphH2(N, kv(:).'*r)./designed_loudspeaker.sphH2(N, kv(:).'*r0);
+            HR(~isfinite(HR)) = 0;
+        end
+
+        function H = sphH2(N, x)
+            % [N+1 x numel(x)] spherical Hankel functions h_n^(2)(x), n = 0..N
+            x = x(:).'; H = zeros(N + 1, numel(x)); e = exp(-1i*x);
+            H(1, :) = 1i*e./x;
+            if N >= 1, H(2, :) = e.*(1i./x.^2 - 1./x); end
+            for n = 1:N - 1, H(n + 2, :) = (2*n + 1)./x.*H(n + 1, :) - H(n, :); end
         end
 
         function [hr, nIdx] = radial(N, k, r, r0)

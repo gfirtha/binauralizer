@@ -90,9 +90,7 @@ classdef beamformer_renderer < base_renderer
             'Rref',          1)
 
         % Speaker equalization (post-mix)
-        SpeakerEQEnabled = false
-        eqConvolvers     = {}
-        eqImpulseResponses = []   % [Ntaps x Nls] time-domain speaker EQ FIRs
+        speakerEQ        = []     % the scene's speaker_eq (sound_scene_renderer.SpeakerEQ): in the ear-transfer model
 
         % Low-frequency pre-eq shelving (passed through to wfsL/wfsR)
         LowFreqCut        = false
@@ -508,53 +506,6 @@ classdef beamformer_renderer < base_renderer
                 end
             end
 
-            % Speaker EQ on final SSD signals
-            if obj.SpeakerEQEnabled && ~isempty(obj.eqConvolvers)
-                Nls = numel(obj.ssd.loudspeakers);
-                Neq = numel(obj.eqConvolvers);
-                for n = 1:min(Nls, Neq)
-                    if isempty(obj.eqConvolvers{n}), continue; end
-                    raw = obj.ssd.loudspeakers{n}.source_signal.time_series;
-                    if isempty(raw), continue; end
-                    filtered = obj.eqConvolvers{n}.convolve(raw);
-                    obj.ssd.loudspeakers{n}.source_signal.set_signal(filtered, obj.fs);
-                end
-            end
-        end
-
-        % ═══════════════════════════════════════════════
-        %  Speaker EQ
-        % ═══════════════════════════════════════════════
-        function loadSpeakerEQ(obj, matFile)
-            try
-                d = load(matFile, 'hinv', 'fs');
-            catch ME
-                warning('beamformer:eqLoad', 'Cannot load %s: %s', matFile, ME.message);
-                return;
-            end
-            if ~isfield(d, 'hinv') || ~isfield(d, 'fs')
-                warning('beamformer:eqLoad', 'File must contain hinv and fs variables.');
-                return;
-            end
-
-            hinv = d.hinv;
-            fs_eq = d.fs;
-            if fs_eq ~= obj.fs
-                fprintf('Resampling speaker EQ from %d to %d Hz\n', fs_eq, obj.fs);
-                hinv = resample(hinv, obj.fs, fs_eq);
-            end
-
-            Nch = size(hinv, 2);
-            Nls = numel(obj.ssd.loudspeakers);
-            blk = size(obj.virtual_source.source_signal.time_series, 1);
-            if blk == 0, blk = 1024; end
-            obj.eqConvolvers = cell(1, Nls);
-            obj.eqImpulseResponses = zeros(size(hinv, 1), Nls);
-            for n = 1:min(Nch, Nls)
-                obj.eqConvolvers{n} = OLS_convolver(hinv(:, n), blk);
-                obj.eqImpulseResponses(:, n) = hinv(:, n);
-            end
-            fprintf('Speaker EQ loaded: %d filters, %d taps each\n', min(Nch,Nls), size(hinv,1));
         end
 
         % ═══════════════════════════════════════════════
@@ -714,18 +665,14 @@ classdef beamformer_renderer < base_renderer
             end
             f = (0:Nf-1)' * obj.fs / (2*(Nf-1));
 
-            % Optional per-loudspeaker speaker EQ, applied in render() after
-            % beam synthesis. Fold the same spectra into the ear-transfer
-            % model so the analysis matches the radiated field path.
-            if obj.SpeakerEQEnabled && ~isempty(obj.eqImpulseResponses)
-                Neq = min(size(obj.eqImpulseResponses, 2), Nls);
-                if Neq > 0
-                    Nfft = 2*(Nf-1);
-                    H_eq = fft(obj.eqImpulseResponses(:, 1:Neq), Nfft, 1);
-                    H_eq = H_eq(1:Nf, :);
-                    DfL(:, 1:Neq) = DfL(:, 1:Neq) .* H_eq;
-                    DfR(:, 1:Neq) = DfR(:, 1:Neq) .* H_eq;
-                end
+            % The loudspeakers' own EQ (the scene's speaker_eq, applied by
+            % sound_scene_renderer after the driving functions): folded into
+            % the ear-transfer model so the analysis matches the radiated field.
+            if ~isempty(obj.speakerEQ)
+                H_eq = obj.speakerEQ.response(f);
+                Neq = min(size(H_eq, 2), Nls);
+                DfL(:, 1:Neq) = DfL(:, 1:Neq) .* H_eq(:, 1:Neq);
+                DfR(:, 1:Neq) = DfR(:, 1:Neq) .* H_eq(:, 1:Neq);
             end
 
             % HRTF / Diffractor matrix [Nf x Nls]

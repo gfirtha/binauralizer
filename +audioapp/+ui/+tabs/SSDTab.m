@@ -14,6 +14,7 @@
             LstElem  matlab.ui.control.UIControl      % SSD loudspeakers (multi-select)
             PopSpk   matlab.ui.control.UIControl      % designed loudspeaker models
             TxtSpk   matlab.ui.control.UIControl
+            TxtEq    matlab.ui.control.UIControl
         end
 
         properties (Constant)
@@ -99,9 +100,22 @@
                     'Units','normalized','Position',[0.58 0.26 0.35 0.06], ...
                     'TooltipString','Plain loudspeakers again (the whole model of every selected one)', ...
                     'Callback',@(~,~)obj.onRemoveSpeaker());
+                uicontrol(p,'Style','pushbutton','String','Speaker EQ...', ...
+                    'Units','normalized','Position',[0.58 0.19 0.22 0.06], ...
+                    'TooltipString',['The loudspeakers'' own EQ on their driving signals (all renderers; sound card ' ...
+                    'and binaural): a Loudspeaker designer Pre-EQ export (biquads / FIR) or a hinv.mat (FIR taps + fs); ' ...
+                    'one filter for all loudspeakers or one column each (SSD order)'], ...
+                    'Callback',@(~,~)obj.onSpeakerEQ());
+                uicontrol(p,'Style','pushbutton','String','Off', ...
+                    'Units','normalized','Position',[0.81 0.19 0.12 0.06], ...
+                    'Callback',@(~,~)obj.onSpeakerEQOff());
+                obj.TxtEq = uicontrol(p,'Style','text','String','Speaker EQ: off', ...
+                    'Units','normalized','Position',[0.58 0.13 0.35 0.05], ...
+                    'HorizontalAlignment','left');
                 obj.TxtSpk = uicontrol(p,'Style','text','String','', ...
-                    'Units','normalized','Position',[0.58 0.03 0.35 0.22], ...
+                    'Units','normalized','Position',[0.58 0.03 0.35 0.10], ...
                     'HorizontalAlignment','left','ForegroundColor',[0.1 0.3 0.6]);
+                obj.refreshEq();
                 obj.SpeakerLsnr = addlistener(obj.C, 'SpeakersChanged', @(~,~)obj.refreshSpeakers());
                 obj.refreshSpeakers();
 
@@ -182,6 +196,30 @@
 
             function status(obj, s)
                 set(obj.TxtSpk, 'String', s);
+            end
+
+            function onSpeakerEQ(obj)
+                [f, pth] = uigetfile('*.mat', 'Speaker EQ (Loudspeaker designer Pre-EQ export or hinv.mat)', ...
+                    [audioapp.AppContext.speakerDir() filesep]);
+                if isequal(f, 0), return; end
+                try
+                    obj.C.setSpeakerEQ(speaker_eq.read(fullfile(pth, f)));
+                catch ME
+                    errordlg(ME.message, 'Speaker EQ'); return;
+                end
+                obj.refreshEq();
+            end
+
+            function onSpeakerEQOff(obj)
+                obj.C.setSpeakerEQ([]); obj.refreshEq();
+            end
+
+            function refreshEq(obj)
+                E = [];
+                try, E = obj.C.Scene.scene_renderer.SpeakerEQ; catch, end
+                if isempty(E), set(obj.TxtEq, 'String', 'Speaker EQ: off'); return; end
+                if strcmp(E.kind, 'sos'), k = sprintf('%d biquads', size(E.sos{1}, 1)); else, k = sprintf('FIR %d taps', size(E.fir, 1)); end
+                set(obj.TxtEq, 'String', sprintf('Speaker EQ: %s (%s, %d ls)', E.name, k, E.Nls));
             end
     
             function refreshFromSetup(obj)

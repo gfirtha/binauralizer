@@ -27,6 +27,7 @@ classdef sound_scene_renderer < handle
         % are then NOT computed; set KeepLoudspeakerSignals (e.g. live
         % sound-field monitor) or FastBinaural = false to force the
         % per-loudspeaker chain.
+        SpeakerEQ              = []    % speaker_eq: the loudspeakers' own EQ on the driving signals ([] = none)
         FastBinaural           = true
         KeepLoudspeakerSignals = false
     end
@@ -93,6 +94,32 @@ classdef sound_scene_renderer < handle
 
             % Decorrelator
             obj.decorrelator = decorrelator(setup.Decorrelation, obj.ssd.loudspeakers, 1);
+
+            % The loudspeakers' own EQ (Setup.SpeakerEQ: survives rebuilds)
+            if isfield(setup, 'SpeakerEQ') && ~isempty(setup.SpeakerEQ)
+                try
+                    obj.set_speaker_eq(setup.SpeakerEQ);
+                catch ME
+                    warning('sound_scene_renderer:speakerEQ', 'Speaker EQ not applied: %s', ME.message);
+                end
+            end
+        end
+
+        function set_speaker_eq(obj, data)
+            % the loudspeakers' EQ (speaker_eq data struct; [] = off): on every
+            % SSD loudspeaker signal after the driving functions - the
+            % sound-card outputs, the binaural rendering and the fast path
+            if isempty(data)
+                obj.SpeakerEQ = [];
+            else
+                blk = max(numel(obj.SFS_renderer{1}.virtual_source.source_signal.time_series), 1);
+                if blk <= 1, blk = obj.Setup.Block_size; end
+                obj.SpeakerEQ = speaker_eq(data, obj.Setup.SampleRate, obj.ssd.N, blk);
+            end
+            for n = 1:numel(obj.SFS_renderer)
+                if isprop(obj.SFS_renderer{n}, 'speakerEQ'), obj.SFS_renderer{n}.speakerEQ = obj.SpeakerEQ; end
+            end
+            obj.binaural_version = obj.binaural_version + 1;     % the fast path's BRIRs fold it in
         end
 
         % ----- Public API -------------------------------------------------
@@ -137,6 +164,27 @@ classdef sound_scene_renderer < handle
             % Update settings on all renderers and store the latest copy
             obj.Setup = setup;
             cellfun(@(x) x.update_settings(setup.Renderer_setup), obj.SFS_renderer);
+        end
+
+        function set_level_scales(obj, s)
+            % calibrated playback: per-loudspeaker digital -> pascal scale
+            % (AppContext.applyLevelScales); refreshes the prefilters
+            if isscalar(s), s = s*ones(1, numel(obj.binaural_renderer)); end
+            for n = 1:numel(obj.binaural_renderer), obj.binaural_renderer{n}.level_scale = s(n); end
+            obj.update_binaural_renderers('loudspeaker_rotated', []);
+        end
+
+        function r0 = hrtf_distance(obj)
+            % measurement distance of the HRTF set [m]: the extrapolator's
+            % r0/r spreading makes a loudspeaker signal s the free-field
+            % pressure at r0 (s r0/r at the head)
+            r0 = 1;
+            try
+                P = obj.HRTF_extrapolators.measurement_grid.Phi0;
+                r0 = mean(P(:, end));
+            catch
+            end
+            if ~(r0 > 0), r0 = 1; end
         end
 
         function update_binaural_renderers(obj, type, N)
@@ -185,6 +233,14 @@ classdef sound_scene_renderer < handle
             end
             if (obj.Setup.Decorrelation ~= 1)
                 obj.decorrelator.render;
+            end
+            if ~isempty(obj.SpeakerEQ)              % the loudspeakers' own EQ, before the outputs / binaural rendering
+                L = obj.ssd.loudspeakers;
+                X = cell2mat(cellfun(@(l) l.source_signal.time_series, L, 'UniformOutput', false));
+                if ~isempty(X)
+                    Y = obj.SpeakerEQ.process(X);
+                    for n = 1:numel(L), L{n}.source_signal.set_signal(Y(:, n)); end
+                end
             end
             if binaural_mode
                 cellfun(@(x) x.render, obj.binaural_renderer);
@@ -258,6 +314,12 @@ classdef sound_scene_renderer < handle
                 for n = 1:Nls
                     HP(:,n) = obj.binaural_renderer{n}.get_packed_ir();
                 end
+                if ~isempty(obj.SpeakerEQ)          % the loudspeakers' own EQ in front of their ear transfer
+                    he = obj.SpeakerEQ.impulse(); N0 = find(any(HP ~= 0, 2), 1, 'last');
+                    HPe = zeros(N0 + size(he, 1) - 1, Nls);
+                    for n = 1:Nls, HPe(:, n) = conv(HP(1:N0, n), he(:, n)); end
+                    HP = HPe;
+                end
                 % support over all loudspeakers (a directivity prefilter can
                 % spread the IR over the convolver's whole FFT length)
                 Nh = find(any(HP ~= 0, 2), 1, 'last');
@@ -313,6 +375,7 @@ classdef sound_scene_renderer < handle
 
             reg = audioapp.RendererRegistry.instance();
             r = reg.create(rtype, vs, obj.ssd, obj.ssd.loudspeakers, obj.receiver, setup);
+            if isprop(r, 'speakerEQ'), r.speakerEQ = obj.SpeakerEQ; end
             if isa(r, 'wfs_renderer')
                 r.LazyFilterBank = true;   % fast path needs the spectra only
             end

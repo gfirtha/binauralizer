@@ -19,7 +19,7 @@ classdef secondary_source_distribution < handle
             %SECONDARY_SOURCE_DISTRIBUTION Construct an instance of this class
             %   Detailed explanation goes here
             obj.loudspeakers = loudspeakers;
-            obj.update_geometry(center)
+            obj.update_geometry(center);
         end
 
         function obj = update_geometry(obj, center)

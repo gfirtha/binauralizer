@@ -57,11 +57,11 @@ tmp_eq_file = fullfile(tempdir, 'tmp_beamformer_eq.mat');
 hinv = eq; %#ok<NASGU>
 save(tmp_eq_file, 'hinv', 'fs');
 
-r.loadSpeakerEQ(tmp_eq_file);
-r.SpeakerEQEnabled = false;
+eqObj = speaker_eq(speaker_eq.read(tmp_eq_file), fs, Nls, 1024);
+r.speakerEQ = [];
 [f2, HLL2] = local_get_hll(r);
 r_eq_off = local_effective_df(r);
-r.SpeakerEQEnabled = true;
+r.speakerEQ = eqObj;
 [f3, HLL3] = local_get_hll(r);
 r_eq_on = local_effective_df(r);
 
@@ -94,13 +94,11 @@ end
 
 function Df = local_effective_df(r)
     Df = r.wfsL.driving_spectrum;
-    if r.SpeakerEQEnabled && ~isempty(r.eqImpulseResponses)
-        Nf = size(Df, 1);
-        Neq = min(size(r.eqImpulseResponses, 2), size(Df, 2));
-        Nfft = 2 * (Nf - 1);
-        H_eq = fft(r.eqImpulseResponses(:, 1:Neq), Nfft, 1);
-        H_eq = H_eq(1:Nf, :);
-        Df(:, 1:Neq) = Df(:, 1:Neq) .* H_eq;
+    if ~isempty(r.speakerEQ)
+        Nf = size(Df, 1); f = (0:Nf-1)'*r.fs/(2*(Nf-1));
+        H_eq = r.speakerEQ.response(f);
+        Neq = min(size(H_eq, 2), size(Df, 2));
+        Df(:, 1:Neq) = Df(:, 1:Neq) .* H_eq(:, 1:Neq);
     end
 end
 

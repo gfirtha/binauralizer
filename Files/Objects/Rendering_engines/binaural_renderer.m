@@ -10,6 +10,8 @@ classdef binaural_renderer < handle
         extrapolator
         N_fft                   % FFT length for directivity evaluation
         fs                      % sample rate
+        level_scale = 1         % calibrated playback: digital SSD signal -> ear pressure [Pa]
+                                % (AppContext.applyLevelScales; 1 = uncalibrated, as before)
     end
     properties (SetAccess = protected)
         binaural_filter
@@ -26,14 +28,14 @@ classdef binaural_renderer < handle
             obj.fs = source.source_signal.fs;
             obj.N_fft = length(source.source_signal.time_series);
 
-            obj.binaural_filter  = OLS_convolver(obj.extrapolator.extrapolate_hrtf(source,receiver), ...
+            obj.binaural_filter  = OLS_convolver(obj.padHrtf(obj.extrapolator.extrapolate_hrtf(source,receiver)), ...
                                         obj.N_fft, 'spectrum');
             obj.output_signal = signal;
             obj.update_directivity;
         end
 
         function obj = update_hrtf(obj)
-             obj.binaural_filter.update_coefficients( obj.extrapolator.extrapolate_hrtf(obj.binaural_source,obj.receiver)  );
+             obj.binaural_filter.update_coefficients( obj.padHrtf(obj.extrapolator.extrapolate_hrtf(obj.binaural_source,obj.receiver))  );
         end
 
         function hp = get_packed_ir(obj)
@@ -56,23 +58,46 @@ classdef binaural_renderer < handle
             % The prefilter must match the convolver's internal FFT size
             Nfft_conv = obj.binaural_filter.N_fft;
 
-            % Driver of a designed loudspeaker: its response at the listener
-            % (spherical-wave model incl. near field, not only the angle)
+            % Driver of a designed loudspeaker: its response at each ear
+            % (spherical-wave model incl. near field, not only the angle; the
+            % two ears differ in the near field), one prefilter per ear
             if isprop(obj.binaural_source, 'directivity') && isa(obj.binaural_source.directivity, 'DesignedDirectivity')
-                D_spectrum = obj.binaural_source.directivity.responseAt(obj.receiver.position, Nfft_conv, obj.fs);
-                obj.binaural_filter.update_prefilter(D_spectrum, 'frequency_domain');
+                [xL, xR] = obj.earPositions();
+                Dd = obj.binaural_source.directivity;
+                D_spectrum = [Dd.responseAt(xL, Nfft_conv, obj.fs), Dd.responseAt(xR, Nfft_conv, obj.fs)];
+                obj.binaural_filter.update_prefilter(obj.level_scale*D_spectrum, 'frequency_domain');
             % Prefer the source's own Directivity object (new system)
             elseif isprop(obj.binaural_source, 'directivity') && ...
                     ~isempty(obj.binaural_source.directivity) && ...
                     isa(obj.binaural_source.directivity, 'Directivity')
                 D_spectrum = obj.binaural_source.directivity.evaluate_freq_domain( ...
                     Nfft_conv, obj.fs, theta0);
-                obj.binaural_filter.update_prefilter(D_spectrum(:,1), 'frequency_domain');
+                obj.binaural_filter.update_prefilter(obj.level_scale*D_spectrum(:,1), 'frequency_domain');
             elseif ~isempty(obj.source_directivity) && isprop(obj.source_directivity, 'theta')
                 % Legacy fallback: use directivity_table
                 [~,ind2] = min((obj.source_directivity.theta - theta0).^2);
-                obj.binaural_filter.update_prefilter(obj.source_directivity.directivity_mx(:,ind2), 'frequency_domain');
+                obj.binaural_filter.update_prefilter(obj.level_scale*obj.source_directivity.directivity_mx(:,ind2), 'frequency_domain');
+            elseif obj.level_scale ~= 1
+                obj.binaural_filter.update_prefilter(obj.level_scale*ones(Nfft_conv, 1), 'frequency_domain');
             end
+        end
+
+        function h = padHrtf(obj, h)
+            % the HRTF zero-padded to the block length: the convolver's
+            % filter length then also holds the directivity prefilter's
+            % extension (HRTF * directivity; without it the tail was cut).
+            % Free: the FFT size is 2 x block either way.
+            if size(h, 1) < obj.N_fft, h = [h; zeros(obj.N_fft - size(h, 1), size(h, 2))]; end
+        end
+
+        function [xL, xR] = earPositions(obj)
+            % the ears: +-ear_radius across the head, the nose along the
+            % receiver orientation (hrtf_extrapolator: nose -> +x, left -> +y)
+            p = obj.receiver.position(:)'; p = [p, zeros(1, 3 - numel(p))];
+            o = obj.receiver.orientation(:)'; o = [o, zeros(1, 3 - numel(o))]; o = o/max(norm(o), eps);
+            l = cross([0 0 1], o); if norm(l) < 1e-6, l = [0 1 0]; end
+            l = l/norm(l); a = 0.0875;
+            xL = p(1:3) + a*l; xR = p(1:3) - a*l;
         end
 
         function obj = update_renderer(obj,type)
@@ -82,6 +107,9 @@ classdef binaural_renderer < handle
                     obj.update_directivity;
                 case 'receiver_rotated'
                     obj.update_hrtf;
+                    if isprop(obj.binaural_source, 'directivity') && isa(obj.binaural_source.directivity, 'DesignedDirectivity')
+                        obj.update_directivity;                 % the ears move with the head
+                    end
                 case 'loudspeaker_moved'
                     obj.update_hrtf;
                     obj.update_directivity;

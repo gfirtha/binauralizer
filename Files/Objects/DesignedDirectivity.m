@@ -39,10 +39,10 @@ classdef DesignedDirectivity < Directivity
             P = obj.Placement;
             x = [x(:)', zeros(1, 3 - numel(x))];
             xl = P.toLocal(x(1:3) - P.Position);
-            f = [(0:N_fft/2-1)'; (-N_fft/2:-1)']/N_fft*fs;
-            D = P.Model.response(obj.Channel, xl, abs(f));
-            neg = f < 0; D(neg) = conj(D(neg));
-            D(N_fft/2+1) = real(D(N_fft/2+1));
+            fp = (0:N_fft/2)'/N_fft*fs;                     % the positive half; the rest Hermitian
+            Dp = P.Model.response(obj.Channel, xl, fp);
+            Dp(end) = real(Dp(end));
+            D = [Dp; conj(Dp(end-1:-1:2))];
         end
     end
 end

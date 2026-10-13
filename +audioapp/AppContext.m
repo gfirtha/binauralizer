@@ -24,6 +24,14 @@ classdef AppContext < handle
         % Data/Loudspeakers (design files with an exported 'speaker') and
         % by the designer's "Send to Binauralizer"
         Speakers
+
+        % Calibrated headphone playback (Output setup / Level): the ear
+        % signals in pascal, played at the simulated SPL
+        % (playback_calibration); the SSD amplifier (0 dBFS = AmpVfs V rms)
+        % and the plain loudspeakers' sensitivity (PlainSens dB SPL @ 1 V, 1 m)
+        Playback
+        AmpVfs    = 2.83
+        PlainSens = 85
     end
 
     properties (Access = private)
@@ -45,6 +53,7 @@ classdef AppContext < handle
             obj.Trajectories = audioapp.model.TrajectorySet();
             obj.Speakers = containers.Map('KeyType', 'char', 'ValueType', 'any');
             obj.scanSpeakerDir();
+            obj.loadPlayback();
 
             % Engine & playback capability + user warning
             obj.ensureEngine();                           % creates engine
@@ -71,6 +80,7 @@ classdef AppContext < handle
             obj.Scene    = sound_scene(obj.SceneGUI, obj.Setup);
             obj.Scene.TestChannelFcn = @(ch) obj.onTestChannel(ch);
             obj.Scene.OnGeometryChangedFcn = @() notify(obj, 'GeometryChanged');
+            obj.applyLevelScales();                   % a saved calibration may be on
         end
 
         function rebuildSoundScene(obj)
@@ -85,7 +95,78 @@ classdef AppContext < handle
             if ~isempty(obj.Video) && isvalid(obj.Video) && obj.Video.hasVideo()
                 obj.Video.arrangeScene();             % TV at the centre, centre under the TV
             end
+            obj.applyLevelScales();
             notify(obj,'SetupChanged');
+        end
+
+        function loadHRTF(obj, file)
+            % an HRTF set (SOFA) for the binaural rendering: the sample rate
+            % follows it, the output and the scene are rebuilt
+            sofa = SOFAload(file);
+            obj.Setup.HRTF = sofa;
+            obj.Setup.Renderer_setup.HRTF_database = sofa;
+            obj.Setup.SampleRate = sofa.Data.SamplingRate;
+            obj.ensureEngine();
+            obj.Engine.refreshOutput();
+            obj.rebuildSoundScene();
+        end
+
+        function loadPlayback(obj)
+            % the saved headphone calibration (prefdir); none saved: off.
+            % The HRTF set chosen with it is taken over when it is local.
+            f = playback_calibration.defaultFile();
+            obj.Playback = playback_calibration.load(f);
+            if ~isfile(f), obj.Playback.enabled = false; end
+            nm = obj.Playback.hrtfName;
+            if ~isempty(nm)
+                L = hrtf_db.local(); k = find(endsWith({L.file}, nm), 1);
+                if ~isempty(k)
+                    try
+                        sofa = SOFAload(L(k).file); obj.Setup.HRTF = sofa; obj.Setup.Renderer_setup.HRTF_database = sofa;
+                        obj.Setup.SampleRate = sofa.Data.SamplingRate;
+                    catch
+                    end
+                end
+            end
+            try
+                L = load(f, 'amp'); obj.AmpVfs = L.amp.AmpVfs; obj.PlainSens = L.amp.PlainSens;
+            catch
+            end
+        end
+
+        function savePlayback(obj)
+            f = playback_calibration.defaultFile();
+            obj.Playback.save(f);
+            amp = struct('AmpVfs', obj.AmpVfs, 'PlainSens', obj.PlainSens); %#ok<NASGU>
+            save(f, 'amp', '-append');
+        end
+
+        function s = levelScales(obj)
+            % per SSD loudspeaker (scene order): digital signal -> ear pressure
+            % [Pa] through the binaural chain. A signal s drives v = sqrt(2)
+            % AmpVfs s volts; a loudspeaker of strength G (p = v G e^{-jkr}/(4 pi
+            % r); designed: Gref, plain: 4 pi 20e-6 10^(PlainSens/20)) gives the
+            % ear pressure v G/(4 pi r) x HRTF, while the chain gives s r0/r x
+            % HRTF (free-field HRTF measured at r0): scale = sqrt(2) AmpVfs
+            % G/(4 pi r0). 1 when the calibration is off.
+            A = obj.Scene.loudspeaker_array; s = ones(1, numel(A));
+            if isempty(obj.Playback) || ~obj.Playback.enabled, return; end
+            r0 = obj.Scene.scene_renderer.hrtf_distance();
+            Gplain = 4*pi*20e-6*10^(obj.PlainSens/20);
+            for n = 1:numel(A)
+                G = Gplain; d = A{n}.directivity;
+                if isa(d, 'DesignedDirectivity'), G = d.Placement.Model.Gref; end
+                s(n) = sqrt(2)*obj.AmpVfs*G/(4*pi*r0);
+            end
+        end
+
+        function applyLevelScales(obj)
+            if isempty(obj.Scene) || isempty(obj.Scene.scene_renderer), return; end
+            try
+                obj.Scene.scene_renderer.set_level_scales(obj.levelScales());
+            catch ME
+                warning('AppContext:level', 'Level scales not applied: %s', ME.message);
+            end
         end
 
         function ensureEngine(obj)
@@ -120,6 +201,7 @@ classdef AppContext < handle
                 'Downmixing_enabled',false, ...
                 'Decorrelation',1, ...
                 'ChannelMap',[], ...   % [] = use layout default from get_default_layout
+                'SpeakerEQ',[], ...    % the loudspeakers' own EQ (speaker_eq data; SSD setup tab)
                 'Loudspeaker_setup',struct('Shape','5.0','R',2,'N',5,'Height',1.7), ...
                 'Rendering_mode','vbap', ...
                 'Renderer_setup',struct('HRTF_database',hrtf), ...
@@ -201,6 +283,15 @@ classdef AppContext < handle
             notify(obj,'SetupChanged');
         end
 
+        % --- The loudspeakers' own EQ (on the driving signals) ---
+        function setSpeakerEQ(obj, data)
+            % data: speaker_eq struct (speaker_eq.read) or [] = off; kept in
+            % Setup (survives scene rebuilds), applied to the running scene
+            obj.Setup.SpeakerEQ = data;
+            if ~isempty(obj.Scene), obj.Scene.scene_renderer.set_speaker_eq(data); end
+            notify(obj, 'SetupChanged');
+        end
+
         % --- Designed loudspeakers ---
         function addSpeaker(obj, S)
             % Register designed_loudspeaker S (replaces one of the same
@@ -265,6 +356,7 @@ classdef AppContext < handle
             P = speaker_placement.onElements(S, elements, pos, ori, obj.Scene.receiver.position);
             obj.Setup.DesignedSpeakers{end+1} = P;
             obj.Scene.attach_speaker(P);
+            obj.applyLevelScales();
             notify(obj, 'SpeakersChanged');
         end
 
@@ -272,6 +364,7 @@ classdef AppContext < handle
             obj.Scene.detach_speaker(P);
             L = obj.Setup.DesignedSpeakers;
             obj.Setup.DesignedSpeakers = L(~cellfun(@(x) x == P, L));
+            obj.applyLevelScales();
             notify(obj, 'SpeakersChanged');
         end
 

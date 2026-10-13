@@ -24,8 +24,6 @@ classdef BeamformerPanel < audioapp.ui.renderers.RendererPanel
         SymmetricDrag = false
 
         % Speaker EQ
-        ChkSpeakerEQ
-        BtnLoadEQ
 
         % Multiband (RACE+LSFI) crossover controls
         TxtMBLabel
@@ -243,23 +241,6 @@ classdef BeamformerPanel < audioapp.ui.renderers.RendererPanel
             obj.TxtLowCutFreq = uicontrol(p,'Style','text','String','fc: — Hz',...
                 'Units','normalized','Position',[lx+0.04 y 0.90 h*0.85],...
                 'HorizontalAlignment','left','ForegroundColor',[0.4 0.4 0.4],'FontSize',8);
-
-            % --- Speaker EQ ---
-            y = y - h - gap;
-            obj.ChkSpeakerEQ = uicontrol(p,'Style','checkbox','String','Speaker EQ',...
-                'Value',0,'Units','normalized','Position',[lx y 0.40 h],...
-                'Callback',@(s,~)obj.onSpeakerEQToggle(s));
-            obj.BtnLoadEQ = uicontrol(p,'Style','pushbutton','String','Load hinv.mat',...
-                'Units','normalized','Position',[cx y cw*0.6 h],...
-                'Callback',@(~,~)obj.onLoadEQ());
-
-            % Sync EQ state from renderer if already loaded
-            try
-                r = obj.getRenderer();
-                if ~isempty(r) && r.SpeakerEQEnabled
-                    set(obj.ChkSpeakerEQ, 'Value', 1);
-                end
-            catch, end
 
             % --- Multiband (RACE+LSFI) crossover ---
             % Only meaningful in 'multiband' mode; visibility is toggled by
@@ -657,37 +638,6 @@ classdef BeamformerPanel < audioapp.ui.renderers.RendererPanel
                 end
             catch
                 set(obj.TxtLowCutFreq, 'String', 'fc: — Hz');
-            end
-        end
-
-        function onSpeakerEQToggle(obj, src)
-            val = logical(get(src, 'Value'));
-            try
-                r = obj.getRenderer();
-                if ~isempty(r)
-                    r.SpeakerEQEnabled = val;
-                    if val && isempty(r.eqConvolvers)
-                        warndlg('No EQ loaded yet. Click "Load hinv.mat" first.', 'Speaker EQ');
-                        set(src, 'Value', 0);
-                        r.SpeakerEQEnabled = false;
-                    end
-                end
-            catch
-            end
-        end
-
-        function onLoadEQ(obj)
-            [f, p] = uigetfile('*.mat', 'Select speaker EQ file (hinv.mat)');
-            if isequal(f, 0), return; end
-            try
-                r = obj.getRenderer();
-                if ~isempty(r)
-                    r.loadSpeakerEQ(fullfile(p, f));
-                    r.SpeakerEQEnabled = true;
-                    set(obj.ChkSpeakerEQ, 'Value', 1);
-                end
-            catch ME
-                warndlg(sprintf('EQ load failed: %s', ME.message), 'Speaker EQ');
             end
         end
 

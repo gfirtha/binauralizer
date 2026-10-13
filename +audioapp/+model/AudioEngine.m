@@ -64,6 +64,9 @@ classdef AudioEngine < handle
                 obj.Out = audioDeviceWriter;  % system default
             end
             try, obj.Out.SampleRate = obj.C.Setup.SampleRate; catch, end
+            % (BufferSize matters only with variable-size input; the
+            % "not relevant" warning on every device change is noise)
+            warning('off', 'MATLAB:system:nonRelevantProperty');
             try, obj.Out.BufferSize = obj.C.Setup.Block_size; catch, end
         end
 
@@ -528,9 +531,9 @@ classdef AudioEngine < handle
                     obj.updateBeamOverlay(inFrame);
 
                     t1 = tic;
-                    outFrame = obj.C.Setup.MasterVolume * obj.C.Scene.render_sound_scene( ...
+                    outFrame = obj.outStage(obj.C.Setup.MasterVolume * obj.C.Scene.render_sound_scene( ...
                         inFrame, obj.C.Setup.Binauralization, ...
-                        obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation);
+                        obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation));
                     tS(2) = tS(2) + toc(t1);
 
                     t1 = tic;
@@ -570,9 +573,9 @@ classdef AudioEngine < handle
                 pad = zeros(blk-rem, size(y,2), 'like', y);
                 last = [read(obj.RB, rem); pad];
                 obj.updateBeamOverlay(last);
-                outFrame = obj.C.Scene.render_sound_scene( ...
+                outFrame = obj.outStage(obj.C.Setup.MasterVolume * obj.C.Scene.render_sound_scene( ...
                     last, obj.C.Setup.Binauralization, ...
-                    obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation);
+                    obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation));
                 obj.Out(outFrame);
             end
 
@@ -664,13 +667,45 @@ classdef AudioEngine < handle
             runningGuard = onCleanup(@() obj.setRunning(false)); %#ok<NASGU>
             silence = zeros(blk, numel(sc.virtual_sources));
             while sc.test_active()
-                outFrame = obj.C.Setup.MasterVolume * sc.render_sound_scene( ...
+                outFrame = obj.outStage(obj.C.Setup.MasterVolume * sc.render_sound_scene( ...
                     silence, obj.C.Setup.Binauralization, ...
-                    obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation);
+                    obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation));
                 obj.Out(outFrame);
                 drawnow limitrate          % another double-click restarts the tone
             end
             try release(obj.Out); catch, end
+        end
+
+        function y = outStage(obj, y)
+            % calibrated headphone playback: the binaural ear pressure [Pa]
+            % -> digital at the simulated SPL (or quieter, ISO 226
+            % compensated), headphone EQ, peak limiter (playback_calibration)
+            % any other stereo output with a headphone chosen (direct
+            % playback, binauralization off / uncalibrated): its EQ alone -
+            % the diffuse-field version for direct playback (music)
+            P = obj.C.Playback;
+            if isempty(P) || size(y, 2) ~= 2, return; end
+            bin = obj.C.Setup.Binauralization;
+            if bin && P.enabled
+                y = P.process(y, obj.C.Setup.SampleRate);
+            elseif ~isempty(P.hpEq)
+                y = P.eqDirect(y, obj.C.Setup.SampleRate, ~bin);
+            end
+        end
+
+        function ok = playCalibrationTone(obj)
+            % the reference tone (Level calibration) on the current output
+            % device, at the current device settings; not while playing
+            ok = false;
+            if obj.Running, return; end
+            obj.ensureOutput(); if isempty(obj.Out), return; end
+            blk = obj.C.Setup.Block_size; P = obj.C.Playback;
+            P.reset(obj.C.Setup.SampleRate); x = P.testTone(3);
+            for s = 1:blk:size(x, 1) - blk + 1
+                obj.Out(x(s:s+blk-1, :));
+            end
+            try release(obj.Out); catch, end
+            ok = true;
         end
 
         function updateBeamOverlay(obj, inFrame)
@@ -920,9 +955,9 @@ classdef AudioEngine < handle
                 obj.updateBeamOverlay(inFrame);
 
                 % ── Render through sound scene ──
-                outFrame = obj.C.Setup.MasterVolume * obj.C.Scene.render_sound_scene( ...
+                outFrame = obj.outStage(obj.C.Setup.MasterVolume * obj.C.Scene.render_sound_scene( ...
                     inFrame, obj.C.Setup.Binauralization, ...
-                    obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation);
+                    obj.C.Setup.Downmixing_enabled, obj.C.Setup.Decorrelation));
 
                 % ── Output ──
                 obj.Out(outFrame);

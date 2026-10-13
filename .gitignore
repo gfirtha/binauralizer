@@ -22,3 +22,9 @@ errors
 # third-party driver CAD models (copyright) and their caches; README stays
 Data/Driver_models/*
 !Data/Driver_models/README.md
+
+
+# online download caches (Loudspeaker designer driver catalogue: manufacturer
+# datasheets / CAD - copyright; AutoEq headphone measurements): re-fetched on demand
+Data/Drivers/online/
+Data/Headphones/cache/

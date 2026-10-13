@@ -75,15 +75,26 @@ classdef OLS_convolver < base_fft_convolver
         
         function obj = prefilter_coefficients(obj)
             % TODO: extend prefilter for UPOLS convolution
-            if ~all(obj.prefilter==1)
-                for n = 1 : size(obj.part_ix,1)
-                    if size( obj.coefficients, 2 ) == 1
-                        obj.coefficients{n} = obj.prefilter.*obj.unfiltered_coefficients{1};
-                    else
-                        obj.coefficients{n} = bsxfun( @times, obj.prefilter, obj.unfiltered_coefficients(obj.part_ix(n,:):obj.part_ix(n,:)) ) ;
-                    end
+            if size(obj.prefilter, 2) == 2
+                % one prefilter per ear [N_fft x 2] (left, right) on the
+                % packed two-ear coefficients C = FFT(h_L + i h_R):
+                % H_L = (C(k) + conj(C(-k)))/2, H_R = (C(k) - conj(C(-k)))/(2i)
+                for n = 1 : numel(obj.unfiltered_coefficients)
+                    C = obj.unfiltered_coefficients{n}; Nf = numel(C);
+                    Cm = conj(C(mod(Nf - (0:Nf-1), Nf) + 1));
+                    HL = (C + Cm)/2; HR = (C - Cm)/(2i);
+                    obj.coefficients{n} = HL.*obj.prefilter(:, 1) + 1i*HR.*obj.prefilter(:, 2);
                 end
-%            else 
+                return;
+            end
+            if ~all(obj.prefilter==1)
+                % every partition times the prefilter (exact for a scalar /
+                % short prefilter; was partition 1 copied into all of them)
+                for n = 1 : numel(obj.unfiltered_coefficients)
+                    obj.coefficients{n} = obj.prefilter.*obj.unfiltered_coefficients{n};
+                end
+            else
+                obj.coefficients = obj.unfiltered_coefficients;
             end
         end
         
