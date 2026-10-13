@@ -40,7 +40,8 @@ classdef MainWindow < handle
 
             obj.Fig = figure('Name','Binauralizer','NumberTitle','off','MenuBar','none','Toolbar','none',...
                              'Color',get(0,'defaultuicontrolbackgroundcolor'),...
-                             'Units','normalized','Position',[0.12 0.08 0.76 0.84]);
+                             'Units','normalized','Position',[0.12 0.08 0.76 0.84], ...
+                             'WindowState','maximized');      % the app always fills the screen
 
             % --- Top-level tabs ---
             obj.TopTabs = uitabgroup(obj.Fig,'Units','normalized','Position',[0 0 1 1]);
