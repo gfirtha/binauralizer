@@ -1,4 +1,4 @@
-classdef sound_scene_simulator < handle
+﻿classdef sound_scene_simulator < handle
     %SCENE_SIMULATOR Summary of this class goes here
     %   Detailed explanation goes here
 
@@ -39,7 +39,7 @@ classdef sound_scene_simulator < handle
         monitorTimer          % timer handle
         monitorRate (1,1) double = 20   % target FPS (refreshes per second)
 
-        masterEQ   % audioapp.dsp.MasterEQ (opcionális)
+        masterEQ   % audioapp.dsp.MasterEQ (opcionĂˇlis)
 
         % --- Head diffraction
         diffractor          % Diffractor object (lazy-init)
@@ -271,6 +271,13 @@ classdef sound_scene_simulator < handle
         end
 
         function set_input(obj,type)
+            % the loudspeakers' own EQ (Speaker EQ) from rest: the live
+            % playback's filter state must not leak into the simulation
+            try
+                E = obj.temporary_sound_scene.scene_renderer.SpeakerEQ;
+                if ~isempty(E), E.reset(); end
+            catch
+            end
             input = repmat( [zeros(length(obj.temporary_sound_scene.virtual_sources{1}.source_signal.time_series),1)] ...
                 ,1 , length(obj.temporary_sound_scene.virtual_sources));
             obj.temporary_sound_scene.render_sound_scene(input,false, false);
@@ -295,7 +302,7 @@ classdef sound_scene_simulator < handle
                     input = repmat([hann(obj.pulse_width); zeros(N-obj.pulse_width,1)], ...
                         1, length(obj.temporary_sound_scene.virtual_sources));
 
-                    % --- Master EQ alkalmazása, ha elérhető és engedélyezett ---
+                    % --- Master EQ alkalmazĂˇsa, ha elĂ©rhetĹ‘ Ă©s engedĂ©lyezett ---
                     if ~isempty(obj.masterEQ) && isvalid(obj.masterEQ) && obj.masterEQ.Enabled
                         try
                             obj.masterEQ.setFs(fs);           % biztos, ami biztos: FS szinkron
@@ -370,11 +377,11 @@ classdef sound_scene_simulator < handle
 
                 theta_grid = (0:180)/180*pi;
                 Dir_mx = ls.directivity.evaluate_freq_domain(Nsig, ls.source_signal.fs, theta_grid);
-                % Dir_mx: [Nsig × 181]  (for omni: all ones → no change)
+                % Dir_mx: [Nsig Ă— 181]  (for omni: all ones â†’ no change)
 
-                in = fft(sig, Nsig);  % [Nsig × 1]
+                in = fft(sig, Nsig);  % [Nsig Ă— 1]
                 Directive_signal = real(ifft(bsxfun(@times, Dir_mx, in), [], 1));
-                % Directive_signal: [Nsig × 181]
+                % Directive_signal: [Nsig Ă— 181]
 
                 t_local = (1:Nsig) / ls.source_signal.fs;
                 [Theta, T_grid] = meshgrid(theta_grid, t_local(:));
@@ -476,8 +483,8 @@ classdef sound_scene_simulator < handle
 
                 % Get directivity at the receiver angle using the source's Directivity object
                 freq_vec = (0:N-1)'/N*fs;
-                D_at_angle = ls.directivity.evaluate(fi0, freq_vec');  % [1 × N]
-                Dir0 = D_at_angle(:);  % [N × 1]
+                D_at_angle = ls.directivity.evaluate(fi0, freq_vec');  % [1 Ă— N]
+                Dir0 = D_at_angle(:);  % [N Ă— 1]
 
                 c = audioapp.util.Physics.speedOfSound();
                 transfer = transfer + 1/(4*pi) * s0 .* exp(-1i*2*pi*freq_vec/c*R) .* Dir0 / R;
@@ -514,7 +521,7 @@ classdef sound_scene_simulator < handle
                     yl = get(gca,'yLim');
                     hold on
                     p(ri) = plot([1,1]*max(f(ri,:)),yl,'--k','LineWidth',1.25,'Color',[0 0 0]+(0.15*ri));
-                    tag{ri} = sprintf('f_c^{%s}',obj.gui.virtual_source_points{ri}.UserData.text.String)
+                    tag{ri} = sprintf('f_c^{%s}',obj.gui.virtual_source_points{ri}.UserData.text.String);
                     %%
                 end
             end
@@ -567,7 +574,7 @@ classdef sound_scene_simulator < handle
                     field = real(obj.referenceField(obj.t(end)));
                     return;                 % no head scattering on the target field
             end
-            % ── Add head diffraction if enabled ──
+            % â”€â”€ Add head diffraction if enabled â”€â”€
             if obj.includeHeadEffect
                 field = obj.addHeadScattering(field);
             end
@@ -602,7 +609,7 @@ classdef sound_scene_simulator < handle
             Z = exp(1i*w*obj.t(end)) * obj.engine.harmonic(A, obj.f0, dirs);
         end
 
-        % ── Animation (Play button) ──
+        % â”€â”€ Animation (Play button) â”€â”€
         function onPlayToggled(obj, isOn)
             if ~isOn, obj.stopAnimation(); return; end
             if strcmpi(obj.simulation_type,'harmonic') && ~strcmpi(obj.viewMode,'real')
@@ -840,7 +847,7 @@ classdef sound_scene_simulator < handle
         end
         function onToggleRendererVisuals(obj, isOn)
             if isOn
-                % If we haven’t copied yet (or copies were deleted), copy now
+                % If we havenâ€™t copied yet (or copies were deleted), copy now
                 if isempty(obj.rendererCopies) || any(~isvalid(obj.rendererCopies))
                     obj.copyRendererVisuals();
                 end
@@ -969,7 +976,7 @@ classdef sound_scene_simulator < handle
             end
         end
 
-        % ── Head diffraction toggle ──
+        % â”€â”€ Head diffraction toggle â”€â”€
         function onToggleHeadEffect(obj, isOn)
             obj.includeHeadEffect = logical(isOn);
 
@@ -985,7 +992,7 @@ classdef sound_scene_simulator < handle
             obj.plot_field(field);
         end
 
-        % ── Compute and superpose scattered field from all loudspeakers ──
+        % â”€â”€ Compute and superpose scattered field from all loudspeakers â”€â”€
         function field_out = addHeadScattering(obj, field_free)
             % field_free: [Ny x Nx] complex free-field pressure at f0
             % field_out:  same size, with scattering added

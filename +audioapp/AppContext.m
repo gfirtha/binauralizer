@@ -96,6 +96,7 @@ classdef AppContext < handle
                 obj.Video.arrangeScene();             % TV at the centre, centre under the TV
             end
             obj.applyLevelScales();
+            obj.rebuildSpeakerEQ();                  % per loudspeaker (the SSD may have changed)
             notify(obj,'SetupChanged');
         end
 
@@ -201,9 +202,11 @@ classdef AppContext < handle
                 'Downmixing_enabled',false, ...
                 'Decorrelation',1, ...
                 'ChannelMap',[], ...   % [] = use layout default from get_default_layout
-                'SpeakerEQ',[], ...    % the loudspeakers' own EQ (speaker_eq data; SSD setup tab)
+                'SpeakerEQ',[], ...    % the loudspeakers' own EQ as applied (rebuildSpeakerEQ: per loudspeaker)
+                'SpeakerEQOn',true, ...   % the switch (SSD setup tab)
+                'SpeakerEQFile',[], ...   % an EQ file for the plain loudspeakers (speaker_eq.read; legacy hinv.mat)
                 'Loudspeaker_setup',struct('Shape','5.0','R',2,'N',5,'Height',1.7), ...
-                'Rendering_mode','vbap', ...
+                'Rendering_mode','direct_playback', ...   % (easy testing; was vbap)
                 'Renderer_setup',struct('HRTF_database',hrtf), ...
                 'Loudspeaker_type',struct('Shape','point_source','R',0.025), ...
                 'Virtual_source_type',struct('Shape','point_source','R',0.01) );
@@ -285,11 +288,75 @@ classdef AppContext < handle
 
         % --- The loudspeakers' own EQ (on the driving signals) ---
         function setSpeakerEQ(obj, data)
-            % data: speaker_eq struct (speaker_eq.read) or [] = off; kept in
-            % Setup (survives scene rebuilds), applied to the running scene
+            % an EQ file for the plain loudspeakers (speaker_eq.read: a Pre-EQ
+            % export or a legacy hinv.mat; [] = none); the designed
+            % loudspeakers bring their own (rebuildSpeakerEQ)
+            obj.Setup.SpeakerEQFile = data;
+            obj.rebuildSpeakerEQ();
+        end
+
+        function setSpeakerEQOn(obj, on)
+            obj.Setup.SpeakerEQOn = logical(on);
+            obj.rebuildSpeakerEQ();
+        end
+
+        function rebuildSpeakerEQ(obj)
+            % the speaker EQ of every SSD loudspeaker, at the head of its
+            % chain (sound_scene_renderer: after the driving functions,
+            % before the sound card / the binaural rendering): the Pre-EQ
+            % of the designed loudspeaker it is a driver of (PreEQ, saved
+            % with the model), else the EQ file's (its column); all off
+            % with SpeakerEQOn false
+            if isempty(obj.Scene), return; end
+            SR = obj.Scene.scene_renderer; N = SR.ssd.N;
+            list = cell(1, N); names = cell(1, N);
+            F = obj.Setup.SpeakerEQFile;
+            if ~isempty(F)
+                nc = 1; if isfield(F, 'hinv') && ~isempty(F.hinv), nc = size(F.hinv, 2); end
+                if isfield(F, 'sos') && iscell(F.sos), nc = numel(F.sos); end
+                for e = 1:N
+                    if nc == 1, list{e} = F;
+                    elseif e <= nc, list{e} = colOf(F, e);
+                    end
+                    if ~isempty(list{e}), names{e} = F.name; end
+                end
+            end
+            D = obj.Setup.DesignedSpeakers;
+            for q = 1:numel(D)
+                M = D{q}.Model;
+                if isprop(M, 'PreEQ') && ~isempty(M.PreEQ)
+                    for e = D{q}.Elements(D{q}.Elements <= N), list{e} = M.PreEQ; names{e} = M.Name; end
+                end
+            end
+            if ~obj.Setup.SpeakerEQOn || all(cellfun(@isempty, list))
+                data = [];
+            else
+                data = struct('perSpeaker', {list}, 'names', {names}, 'fs', obj.Setup.SampleRate, ...
+                    'name', strjoin(unique(names(~cellfun(@isempty, names))), ', '));
+            end
             obj.Setup.SpeakerEQ = data;
-            if ~isempty(obj.Scene), obj.Scene.scene_renderer.set_speaker_eq(data); end
+            try
+                SR.set_speaker_eq(data);
+            catch ME
+                warning('AppContext:speakerEQ', 'Speaker EQ not applied: %s', ME.message);
+                obj.Setup.SpeakerEQ = []; SR.set_speaker_eq([]);
+            end
             notify(obj, 'SetupChanged');
+        end
+
+        function [txt, avail] = speakerEQInfo(obj)
+            % per loudspeaker: the EQ's source and its type (IIR biquads /
+            % FIR taps); avail: any EQ to switch on
+            txt = {}; avail = ~isempty(obj.Setup.SpeakerEQFile);
+            D = obj.Setup.DesignedSpeakers;
+            for q = 1:numel(D), M = D{q}.Model; if isprop(M, 'PreEQ') && ~isempty(M.PreEQ), avail = true; end, end
+            E = []; try, E = obj.Scene.scene_renderer.SpeakerEQ; catch, end
+            if isempty(E), return; end
+            for e = 1:E.Nls
+                d = E.describe(e); if strcmp(d, 'none'), continue; end
+                nm = ''; if isfield(E.data, 'names') && e <= numel(E.data.names), nm = E.data.names{e}; end
+                txt{end+1} = sprintf('%d: %s (%s)', e, d, nm); %#ok<AGROW>
+            end
         end
 
         % --- Designed loudspeakers ---
@@ -304,6 +371,7 @@ classdef AppContext < handle
                 if strcmp(P.Model.Name, S.Name) && P.Model ~= S
                     if S.nChannels == numel(P.Elements)
                         obj.Scene.detach_speaker(P); P.Model = S; obj.Scene.attach_speaker(P);
+                        obj.rebuildSpeakerEQ();
                     else
                         obj.removeSpeaker(P);
                     end
@@ -357,6 +425,7 @@ classdef AppContext < handle
             obj.Setup.DesignedSpeakers{end+1} = P;
             obj.Scene.attach_speaker(P);
             obj.applyLevelScales();
+            obj.rebuildSpeakerEQ();                  % its Pre-EQ on its loudspeakers
             notify(obj, 'SpeakersChanged');
         end
 
@@ -365,6 +434,7 @@ classdef AppContext < handle
             L = obj.Setup.DesignedSpeakers;
             obj.Setup.DesignedSpeakers = L(~cellfun(@(x) x == P, L));
             obj.applyLevelScales();
+            obj.rebuildSpeakerEQ();
             notify(obj, 'SpeakersChanged');
         end
 
@@ -429,4 +499,11 @@ classdef AppContext < handle
             end
         end
     end
+end
+
+function d = colOf(F, e)
+% column / cascade e of a multi-channel speaker-EQ file as a one-filter struct
+d = F;
+if isfield(F, 'sos') && iscell(F.sos), d.sos = F.sos{e}; d.peq = []; end
+if isfield(F, 'hinv') && size(F.hinv, 2) > 1, d.hinv = F.hinv(:, e); end
 end

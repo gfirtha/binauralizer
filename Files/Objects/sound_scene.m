@@ -650,6 +650,18 @@ classdef sound_scene < handle
 
             if isDirect && ~Binauralization
                 output = input;
+                % the loudspeakers' own EQ: at the head of their chain in
+                % every mode (input channel n = loudspeaker n here)
+                E = []; try, E = obj.scene_renderer.SpeakerEQ; catch, end
+                if ~isempty(E)
+                    k = min(size(output, 2), E.Nls);
+                    X = zeros(size(output, 1), E.Nls); X(:, 1:k) = output(:, 1:k);
+                    Y = E.process(X); output(:, 1:k) = Y(:, 1:k);
+                end
+                % the loudspeakers carry what they play (the field / transfer
+                % simulations read them)
+                L = obj.loudspeaker_array;
+                for n = 1:min(numel(L), size(output, 2)), L{n}.source_signal.set_signal(output(:, n)); end
                 if ~isempty(test) && obj.testLs <= size(output,2)
                     output(:,obj.testLs) = output(:,obj.testLs) + test;
                 end

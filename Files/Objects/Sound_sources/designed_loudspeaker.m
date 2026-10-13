@@ -57,6 +57,8 @@ classdef designed_loudspeaker < handle
         Gref = 1
         Info = struct()
         File = ''
+        PreEQ = []              % its Pre-EQ (speaker_eq data: biquads / FIR), [] = none: applied by the
+                                % Binauralizer on its driving signals (Speaker EQ, switchable), not in H
     end
 
     properties (Constant)
@@ -191,7 +193,7 @@ classdef designed_loudspeaker < handle
 
         function s = toStruct(obj)
             s = struct('Name', obj.Name, 'Mesh', obj.Mesh, 'Drivers', obj.Drivers, 'Az', obj.Az, ...
-                'El', obj.El, 'f', obj.f, 'H', obj.H, 'SH', obj.SH, 'Gref', obj.Gref, 'Info', obj.Info);
+                'El', obj.El, 'f', obj.f, 'H', obj.H, 'SH', obj.SH, 'Gref', obj.Gref, 'Info', obj.Info, 'PreEQ', obj.PreEQ);
         end
 
         function save(obj, file)

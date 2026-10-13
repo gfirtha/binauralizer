@@ -19,15 +19,20 @@ classdef speaker_eq < handle
     %            One filter (1 column / one cascade) is used for every
     %            loudspeaker; nCh >= Nls: column n for loudspeaker n (SSD
     %            order); fewer: the rest unfiltered.
+    %            perSpeaker {Nls}: instead of the above, one such struct (or
+    %            [] = unfiltered) per loudspeaker - each with its own kind
+    %            (the designed loudspeakers' Pre-EQs, AppContext.rebuildSpeakerEQ)
     %     fs, Nls, blk  the scene's rate, loudspeaker count, block size
     %   Y = E.process(X)        X [n x Nls] one block, state kept per block
     %   G = E.response(f)       [nf x Nls] complex
     %   h = E.impulse(N)        [N x Nls] impulse responses (N = [] : E.irLength)
+    %   s = E.describe(n)       'IIR, 7 biquads' | 'FIR, 4096 taps' | 'none' (loudspeaker n)
 
     properties
         fs
         Nls
-        kind = 'sos'            % 'sos' | 'fir'
+        kind = 'sos'            % 'sos' | 'fir' | 'mixed' (perSpeaker: Parts)
+        Parts = {}              % mixed: {Nls} speaker_eq (one loudspeaker each) or []
         sos = {}                % {Nls} [nb x 6] (empty: unfiltered)
         fir = []                % [N x Nls]
         name = ''
@@ -44,6 +49,16 @@ classdef speaker_eq < handle
         function obj = speaker_eq(data, fs, Nls, blk)
             obj.fs = fs; obj.Nls = Nls; obj.data = data;
             if isfield(data, 'name'), obj.name = data.name; end
+            if isfield(data, 'perSpeaker')
+                obj.kind = 'mixed'; obj.Parts = cell(1, Nls); obj.irLength = 1;
+                for n = 1:min(Nls, numel(data.perSpeaker))
+                    if ~isempty(data.perSpeaker{n})
+                        obj.Parts{n} = speaker_eq(data.perSpeaker{n}, fs, 1, blk);
+                        obj.irLength = max(obj.irLength, obj.Parts{n}.irLength);
+                    end
+                end
+                return;
+            end
             fsD = fs; if isfield(data, 'fs') && ~isempty(data.fs), fsD = data.fs; end
             S = {};
             if isfield(data, 'peq') && fsD ~= fs && ~isempty(data.peq)
@@ -83,6 +98,12 @@ classdef speaker_eq < handle
 
         function Y = process(obj, X)
             Y = X;
+            if strcmp(obj.kind, 'mixed')
+                for n = 1:min(obj.Nls, size(X, 2))
+                    if ~isempty(obj.Parts{n}), Y(:, n) = obj.Parts{n}.process(X(:, n)); end
+                end
+                return;
+            end
             for n = 1:min(obj.Nls, size(X, 2))
                 switch obj.kind
                     case 'sos'
@@ -98,6 +119,10 @@ classdef speaker_eq < handle
 
         function G = response(obj, f)
             f = f(:); G = ones(numel(f), obj.Nls); z = exp(-1i*2*pi*f/obj.fs);
+            if strcmp(obj.kind, 'mixed')
+                for n = 1:obj.Nls, if ~isempty(obj.Parts{n}), G(:, n) = obj.Parts{n}.response(f); end, end
+                return;
+            end
             for n = 1:obj.Nls
                 switch obj.kind
                     case 'sos'
@@ -114,6 +139,12 @@ classdef speaker_eq < handle
         function h = impulse(obj, N)
             if nargin < 2 || isempty(N), N = obj.irLength; end
             d = [1; zeros(N - 1, 1)]; h = zeros(N, obj.Nls);
+            if strcmp(obj.kind, 'mixed')
+                for n = 1:obj.Nls
+                    if isempty(obj.Parts{n}), h(:, n) = d; else, h(:, n) = obj.Parts{n}.impulse(N); end
+                end
+                return;
+            end
             for n = 1:obj.Nls
                 switch obj.kind
                     case 'sos'
@@ -128,6 +159,22 @@ classdef speaker_eq < handle
 
         function reset(obj)
             obj.zi = cellfun(@(z) 0*z, obj.zi, 'UniformOutput', false);
+            for n = 1:numel(obj.Parts), if ~isempty(obj.Parts{n}), obj.Parts{n}.reset(); end, end
+        end
+
+        function s = describe(obj, n)
+            % the filter type of loudspeaker n: 'IIR, k biquads', 'FIR, N taps', 'none'
+            if strcmp(obj.kind, 'mixed')
+                if n > numel(obj.Parts) || isempty(obj.Parts{n}), s = 'none'; else, s = obj.Parts{n}.describe(1); end
+                return;
+            end
+            switch obj.kind
+                case 'sos'
+                    k = 0; if n <= numel(obj.sos), k = size(obj.sos{n}, 1); end
+                    if k == 0, s = 'none'; else, s = sprintf('IIR, %d biquads', k); end
+                otherwise
+                    s = sprintf('FIR, %d taps', size(obj.fir, 1));
+            end
         end
     end
 
