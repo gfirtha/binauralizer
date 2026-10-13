@@ -680,13 +680,14 @@ classdef AudioEngine < handle
             % calibrated headphone playback: the binaural ear pressure [Pa]
             % -> digital at the simulated SPL (or quieter, ISO 226
             % compensated), headphone EQ, peak limiter (playback_calibration)
-            % any other stereo output with a headphone chosen (direct
-            % playback, binauralization off / uncalibrated): its EQ alone -
-            % the diffuse-field version for direct playback (music)
+            % the headphone EQ is the last stage of EVERY output, whatever the
+            % renderer / layout / channel count: calibrated binaural playback
+            % has it in its own filter; otherwise the EQ alone on all output
+            % channels - the diffuse-field version without binauralization
             P = obj.C.Playback;
-            if isempty(P) || size(y, 2) ~= 2, return; end
+            if isempty(P), return; end
             bin = obj.C.Setup.Binauralization;
-            if bin && P.enabled
+            if bin && P.enabled && size(y, 2) == 2
                 y = P.process(y, obj.C.Setup.SampleRate);
             elseif ~isempty(P.hpEq)
                 y = P.eqDirect(y, obj.C.Setup.SampleRate, ~bin);

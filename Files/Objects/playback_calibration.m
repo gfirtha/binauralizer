@@ -165,7 +165,7 @@ classdef playback_calibration < handle
         end
 
         function y = eqDirect(obj, x, fs, diffuse)
-            % one block (n x 2, digital): the headphone EQ only - diffuse
+            % one block (n x channels, digital): the headphone EQ only - diffuse
             % (true): the diffuse-field version (direct playback of music),
             % else the eardrum one (uncalibrated binaural)
             if nargin > 2 && fs ~= obj.fs, obj.fs = fs; obj.hD = 1; obj.ziD = []; obj.dKey = ''; end
@@ -182,6 +182,7 @@ classdef playback_calibration < handle
                 end
                 obj.ziDNew = []; obj.dKey = key;
             end
+            if ~isempty(obj.ziD) && size(obj.ziD, 2) ~= size(x, 2), obj.ziD = []; end   % the channel count changed
             [y, obj.ziD] = obj.fir(obj.hD, x, obj.ziD);
             if ~isempty(obj.hDNew)
                 [y2, obj.ziDNew] = obj.fir(obj.hDNew, x, obj.ziDNew);
