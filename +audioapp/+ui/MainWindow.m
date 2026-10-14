@@ -24,8 +24,6 @@ classdef MainWindow < handle
         MeasTab
         RoomTab
         SpeakerTab
-        ArrayTab
-        ArrayLabPanel
         SeparationPanel audioapp.ui.SeparationPanel
         MeasurementPanel audioapp.ui.MeasurementPanel
         RoomBuilderPanel audioapp.ui.RoomBuilderPanel
@@ -52,7 +50,6 @@ classdef MainWindow < handle
             obj.MeasTab = uitab(obj.TopTabs,'Title','  Measurement-based reproduction  ');
             obj.RoomTab = uitab(obj.TopTabs,'Title','  Room builder  ');
             obj.SpeakerTab = uitab(obj.TopTabs,'Title','  Loudspeaker designer  ');
-            obj.ArrayTab = uitab(obj.TopTabs,'Title','  Array lab  ');
             host = obj.MainTab;
 
             % --- Scene view selector (top bar) ---
@@ -111,8 +108,7 @@ classdef MainWindow < handle
             obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
             obj.LoudspeakerDesignerPanel = audioapp.ui.LoudspeakerDesignerPanel(obj.SpeakerTab, obj.C);
 
-            % Array lab: loudspeaker arrays measured on a microphone grid
-            obj.ArrayLabPanel = audioapp.ui.ArrayLabPanel(obj.ArrayTab, obj.C);
+            % (the Array lab - arrays measured on a microphone grid - is a step of the Loudspeaker designer)
         end
 
         function onViewChanged(obj)
