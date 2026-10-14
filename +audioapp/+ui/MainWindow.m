@@ -24,6 +24,7 @@ classdef MainWindow < handle
         MeasTab
         RoomTab
         SpeakerTab
+        SpeakerStarted = false      % the designer's start design loaded (on the tab's first opening)
         SeparationPanel audioapp.ui.SeparationPanel
         MeasurementPanel audioapp.ui.MeasurementPanel
         RoomBuilderPanel audioapp.ui.RoomBuilderPanel
@@ -107,6 +108,9 @@ classdef MainWindow < handle
             % Room builder and Loudspeaker designer modules (placeholders)
             obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
             obj.LoudspeakerDesignerPanel = audioapp.ui.LoudspeakerDesignerPanel(obj.SpeakerTab, obj.C);
+            % the designer starts from a finished design (gs40 ported box), not an empty box - loaded when its
+            % tab is first opened (filling its panels takes a while; the app's start does not wait for it)
+            set(obj.TopTabs, 'SelectionChangedFcn', @(~, e) obj.onTopTab(e));
 
             % (the Array lab - arrays measured on a microphone grid - is a step of the Loudspeaker designer)
         end
@@ -124,6 +128,17 @@ classdef MainWindow < handle
             if ~isempty(k), obj.ViewMenu.Value = k; end
             if ~isempty(obj.C.Video) && isvalid(obj.C.Video)
                 obj.C.Video.setVirtual(any(strcmp(mode, {'3d', 'listener'})));
+            end
+        end
+    end
+
+    methods (Access = private)
+        function onTopTab(obj, e)
+            if e.NewValue == obj.SpeakerTab && ~obj.SpeakerStarted
+                obj.SpeakerStarted = true;
+                set(obj.Fig, 'Pointer', 'watch'); drawnow;
+                obj.LoudspeakerDesignerPanel.loadStartDesign();
+                set(obj.Fig, 'Pointer', 'arrow');
             end
         end
     end
