@@ -32,3 +32,6 @@ Data/Headphones/cache/
 
 # Array lab: cached imports of the array measurements (re-read from the measurement files)
 Data/ArrayLab/
+
+# test suite: the generated report
+tests/report.md
