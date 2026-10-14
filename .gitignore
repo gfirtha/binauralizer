@@ -29,3 +29,6 @@ Data/Driver_models/*
 Data/Drivers/online/
 Data/Headphones/cache/
 
+
+# Array lab: cached imports of the array measurements (re-read from the measurement files)
+Data/ArrayLab/

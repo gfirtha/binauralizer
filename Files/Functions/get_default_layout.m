@@ -132,16 +132,19 @@ switch Shape
         Num_channels = size(position,1);
 
     case 'genius_array'
-        % 8-element linear array, 7 cm inter-element spacing
-        % Centered at y = R (like a standard linear array)
+        % 8-element linear array (Genius SP-HF180 boxes side by side), centred at y = R
+        % (like a standard linear array). Pitch 74 mm: the speaker positions fitted
+        % to the arrival times of the anechoic grid measurement (2026-10-14; the
+        % boxes are 72 mm wide). Channels: output k drives the k-th speaker from
+        % the left seen from the front (SSD index = output channel).
         Nel = 8;
-        d_elem = 0.07;   % 7 cm
+        d_elem = 0.074;
         total_width = (Nel-1) * d_elem;
         x = linspace(-total_width/2, total_width/2, Nel)';
         y = R * ones(Nel, 1);
         position = [x, y];
         normal = [zeros(Nel,1), -ones(Nel,1)];   % pointing inward (towards y=0)
-        channelMap  = [8, 7, 4, 3, 6, 5, 2, 1];
+        channelMap  = 1:Nel;     % was [8 7 4 3 6 5 2 1] until 2026-10-14
         Num_channels = Nel;  % override — genius_array always has 8 elements
 
     case 'general'

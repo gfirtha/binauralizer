@@ -17,13 +17,15 @@ classdef MainWindow < handle
 
         % Top level modules: 1 Binauralizer, 2 Source separation,
         % 3 Measurement-based reproduction, 4 Room builder,
-        % 5 Loudspeaker designer
+        % 5 Loudspeaker designer, 6 Array lab
         TopTabs
         MainTab
         SepTab
         MeasTab
         RoomTab
         SpeakerTab
+        ArrayTab
+        ArrayLabPanel
         SeparationPanel audioapp.ui.SeparationPanel
         MeasurementPanel audioapp.ui.MeasurementPanel
         RoomBuilderPanel audioapp.ui.RoomBuilderPanel
@@ -50,6 +52,7 @@ classdef MainWindow < handle
             obj.MeasTab = uitab(obj.TopTabs,'Title','  Measurement-based reproduction  ');
             obj.RoomTab = uitab(obj.TopTabs,'Title','  Room builder  ');
             obj.SpeakerTab = uitab(obj.TopTabs,'Title','  Loudspeaker designer  ');
+            obj.ArrayTab = uitab(obj.TopTabs,'Title','  Array lab  ');
             host = obj.MainTab;
 
             % --- Scene view selector (top bar) ---
@@ -107,6 +110,9 @@ classdef MainWindow < handle
             % Room builder and Loudspeaker designer modules (placeholders)
             obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
             obj.LoudspeakerDesignerPanel = audioapp.ui.LoudspeakerDesignerPanel(obj.SpeakerTab, obj.C);
+
+            % Array lab: loudspeaker arrays measured on a microphone grid
+            obj.ArrayLabPanel = audioapp.ui.ArrayLabPanel(obj.ArrayTab, obj.C);
         end
 
         function onViewChanged(obj)
