@@ -24,11 +24,9 @@ classdef MainWindow < handle
         MeasTab
         RoomTab
         SpeakerTab
-        SpeakerStarted = false      % the designer's start design loaded (on the tab's first opening)
         SeparationPanel audioapp.ui.SeparationPanel
         MeasurementPanel audioapp.ui.MeasurementPanel
         RoomBuilderPanel audioapp.ui.RoomBuilderPanel
-        LoudspeakerDesignerPanel audioapp.ui.LoudspeakerDesignerPanel
     end
 
     properties (Constant)
@@ -107,10 +105,9 @@ classdef MainWindow < handle
 
             % Room builder and Loudspeaker designer modules (placeholders)
             obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
-            obj.LoudspeakerDesignerPanel = audioapp.ui.LoudspeakerDesignerPanel(obj.SpeakerTab, obj.C);
-            % the designer starts from a finished design (gs40 ported box), not an empty box - loaded when its
-            % tab is first opened (filling its panels takes a while; the app's start does not wait for it)
-            set(obj.TopTabs, 'SelectionChangedFcn', @(~, e) obj.onTopTab(e));
+            % the Loudspeaker designer is its own app (USER, 2026-10-14): this tab only opens it
+            % (run_loudspeaker_designer does the same); its "Send to Binauralizer" registers here
+            obj.buildSpeakerTab();
 
             % (the Array lab - arrays measured on a microphone grid - is a step of the Loudspeaker designer)
         end
@@ -133,13 +130,14 @@ classdef MainWindow < handle
     end
 
     methods (Access = private)
-        function onTopTab(obj, e)
-            if e.NewValue == obj.SpeakerTab && ~obj.SpeakerStarted
-                obj.SpeakerStarted = true;
-                set(obj.Fig, 'Pointer', 'watch'); drawnow;
-                obj.LoudspeakerDesignerPanel.loadStartDesign();
-                set(obj.Fig, 'Pointer', 'arrow');
-            end
+        function buildSpeakerTab(obj)
+            u = {'Units', 'normalized'}; bg = get(obj.Fig, 'Color');
+            uicontrol(obj.SpeakerTab, 'Style', 'text', 'String', {'The Loudspeaker designer is a separate app.', '', ...
+                ['It opens in its own window (also without the Binauralizer: run_loudspeaker_designer). "Send to Binauralizer" ' ...
+                'there registers the loudspeaker here (SSD setup tab) and saves it into Data/Loudspeakers.']}, u{:}, ...
+                'Position', [0.3 0.5 0.4 0.15], 'BackgroundColor', bg, 'FontSize', 11);
+            uicontrol(obj.SpeakerTab, 'Style', 'pushbutton', 'String', 'Open Loudspeaker designer', u{:}, 'Position', [0.4 0.42 0.2 0.06], ...
+                'FontSize', 12, 'FontWeight', 'bold', 'Callback', @(~,~) audioapp.LoudspeakerDesignerApp.open());
         end
     end
 end
