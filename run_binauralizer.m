@@ -5,7 +5,7 @@ addpath(genpath(fileparts(mfilename('fullpath'))));
 % functions with binauralizer names but other versions: keep them off the path
 root = fileparts(mfilename('fullpath'));
 for ext = {'Bubrik', 'Loudspeaker_model_bem', 'nihu'}        % (data only: its functions shadow ours, e.g. get_default_layout;
-                                                             %  nihu: the NiHu sources - only the built mex in nihu_bem is used,
+                                                              %  nihu: the NiHu sources - only the built mex in nihu_bem is used,
                                                              %  and its src/matlab/install.m shadows Files/install.m)
     d = fullfile(root, 'External_software', ext{1});
     if isfolder(d), rmpath(genpath(d)); end
