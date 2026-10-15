@@ -1,6 +1,6 @@
 function root = app_paths()
 %APP_PATHS  The MATLAB path of the binauralizer tree, shared by its apps
-%(run_binauralizer, run_loudspeaker_designer): the whole tree, minus the
+%(run_binauralizer; the Loudspeaker app has its own, lsapp_paths): the whole tree, minus the
 %reference copies of external work that carry functions with our names but
 %other versions (Bubrik; Loudspeaker_model_bem shadows get_default_layout;
 %nihu: only the built mex in nihu_bem is used, its src/matlab/install.m

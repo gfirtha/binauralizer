@@ -106,7 +106,7 @@ classdef MainWindow < handle
             % Room builder and Loudspeaker designer modules (placeholders)
             obj.RoomBuilderPanel = audioapp.ui.RoomBuilderPanel(obj.RoomTab, obj.C);
             % the Loudspeaker designer is its own app (USER, 2026-10-14): this tab only opens it
-            % (run_loudspeaker_designer does the same); its "Send to Binauralizer" registers here
+            % (run_loudspeaker_app does the same); its "Send to Binauralizer" registers here
             obj.buildSpeakerTab();
 
             % (the Array lab - arrays measured on a microphone grid - is a step of the Loudspeaker designer)
@@ -133,11 +133,11 @@ classdef MainWindow < handle
         function buildSpeakerTab(obj)
             u = {'Units', 'normalized'}; bg = get(obj.Fig, 'Color');
             uicontrol(obj.SpeakerTab, 'Style', 'text', 'String', {'The Loudspeaker designer is a separate app.', '', ...
-                ['It opens in its own window (also without the Binauralizer: run_loudspeaker_designer). "Send to Binauralizer" ' ...
+                ['It opens in its own window (also without the Binauralizer: run_loudspeaker_app). "Send to Binauralizer" ' ...
                 'there registers the loudspeaker here (SSD setup tab) and saves it into Data/Loudspeakers.']}, u{:}, ...
                 'Position', [0.3 0.5 0.4 0.15], 'BackgroundColor', bg, 'FontSize', 11);
             uicontrol(obj.SpeakerTab, 'Style', 'pushbutton', 'String', 'Open Loudspeaker designer', u{:}, 'Position', [0.4 0.42 0.2 0.06], ...
-                'FontSize', 12, 'FontWeight', 'bold', 'Callback', @(~,~) audioapp.LoudspeakerDesignerApp.open());
+                'FontSize', 12, 'FontWeight', 'bold', 'Callback', @(~,~) lsapp.LoudspeakerApp.open());
         end
     end
 end
