@@ -16,22 +16,21 @@ Documentation/**/*.pdf
 soundfield_map_*.png
 errors
 
-# driver model tessellation caches
-*.cache.mat
-
-# third-party driver CAD models (copyright) and their caches; README stays
-Data/Driver_models/*
-!Data/Driver_models/README.md
-
-
-# online download caches (Loudspeaker designer driver catalogue: manufacturer
-# datasheets / CAD - copyright; AutoEq headphone measurements): re-fetched on demand
-Data/Drivers/online/
+# online download caches (AutoEq headphone measurements): re-fetched on demand
 Data/Headphones/cache/
 
-
-# Array lab: cached imports of the array measurements (re-read from the measurement files)
+# the Loudspeaker designer (a separate, private repository): its files and exports stay local
++lsapp/
+Files/Objects/LoudspeakerDesign/
+Files/Web/cabinet_editor/
+Files/Objects/Edu/
+Files/Objects/ArrayLab/
+Files/Web/lsapp/
+Data/Loudspeakers/
+Data/Drivers/
+Data/Driver_models/
+Data/Electronics/
 Data/ArrayLab/
-
-# test suite: the generated report
-tests/report.md
+Documentation/Reviews/
+Documentation/Literature_notes/
+tests/

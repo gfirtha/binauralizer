@@ -133,11 +133,22 @@ classdef MainWindow < handle
         function buildSpeakerTab(obj)
             u = {'Units', 'normalized'}; bg = get(obj.Fig, 'Color');
             uicontrol(obj.SpeakerTab, 'Style', 'text', 'String', {'The Loudspeaker designer is a separate app.', '', ...
-                ['It opens in its own window (also without the Binauralizer: run_loudspeaker_app). "Send to Binauralizer" ' ...
+                ['If installed, it opens in its own window. "Send to Binauralizer" ' ...
                 'there registers the loudspeaker here (SSD setup tab) and saves it into Data/Loudspeakers.']}, u{:}, ...
                 'Position', [0.3 0.5 0.4 0.15], 'BackgroundColor', bg, 'FontSize', 11);
             uicontrol(obj.SpeakerTab, 'Style', 'pushbutton', 'String', 'Open Loudspeaker designer', u{:}, 'Position', [0.4 0.42 0.2 0.06], ...
-                'FontSize', 12, 'FontWeight', 'bold', 'Callback', @(~,~) lsapp.LoudspeakerApp.open());
+                'FontSize', 12, 'FontWeight', 'bold', 'Callback', @(~,~) audioapp.ui.MainWindow.openDesigner());
+        end
+    end
+
+    methods (Static, Access = private)
+        function openDesigner()
+            % the Loudspeaker designer is a separate (private) package; open it if it is on the path
+            if exist('lsapp.LoudspeakerApp', 'class') == 8
+                feval('lsapp.LoudspeakerApp.open');
+            else
+                msgbox('The Loudspeaker designer is not installed (it is a separate app).', 'Loudspeaker designer', 'help');
+            end
         end
     end
 end
